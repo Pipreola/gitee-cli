@@ -24,11 +24,33 @@
 
 ## 安装
 
+### 一键安装脚本（推荐）
+
+**Linux / macOS / Git Bash / WSL：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Pipreola/gitee-cli/main/install.sh | bash
+```
+
+**Windows PowerShell：**
+
+```powershell
+irm https://raw.githubusercontent.com/Pipreola/gitee-cli/main/install.ps1 | iex
+```
+
+PowerShell 脚本会自动检测架构（x64/arm64），从 GitHub Releases 下载对应版本的 `gitee.exe`，
+安装到 `%LOCALAPPDATA%\Programs\gitee` 并加入用户 PATH。安装后重新打开终端即可使用 `gitee`。
+
+> 如遇执行策略限制，可在当前会话临时放开：
+> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
+
+### 使用 go install
+
 ```bash
 go install github.com/Pipreola/gitee-cli@latest
 ```
 
-或者从源码构建：
+### 从源码构建
 
 ```bash
 git clone https://github.com/Pipreola/gitee-cli.git
