@@ -28,6 +28,7 @@ func newPRCmd() *cobra.Command {
 	prCmd.AddCommand(newPRListCmd())
 	prCmd.AddCommand(newPRViewCmd())
 	prCmd.AddCommand(newPRCheckoutCmd())
+	prCmd.AddCommand(newPRMergeCmd())
 	return prCmd
 }
 
@@ -580,4 +581,157 @@ func parsePRInput(input, owner, repo string) (int64, error) {
 
 	// 情况3: 其他（含分支名）暂不支持
 	return 0, fmt.Errorf("暂不支持通过分支名检出，请使用 PR 编号或 URL")
+}
+
+// newPRMergeCmd 创建 pr merge 子命令。
+func newPRMergeCmd() *cobra.Command {
+	var (
+		method       string
+		message      string
+		deleteBranch bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "merge <number>",
+		Short: "合并 Pull Request",
+		Long: `合并一个 Pull Request。
+
+支持三种合并方式：
+- merge（默认）：标准合并，保留所有提交历史
+- squash：压缩合并，将所有提交合并为一个
+- rebase：变基合并，在目标分支上重放提交
+
+合并前会自动校验 PR 状态，确保 PR 处于 open 状态且可合并。`,
+		Example: `  # 使用默认方式（merge）合并 PR
+  gitee pr merge 123
+
+  # 使用 squash 方式合并
+  gitee pr merge 123 --method squash
+
+  # 合并后删除源分支
+  gitee pr merge 123 --delete-branch
+
+  # 自定义合并信息
+  gitee pr merge 123 --message "Merge feature X into main"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts := prMergeOptions{
+				input:        args[0],
+				method:       method,
+				message:      message,
+				deleteBranch: deleteBranch,
+			}
+			return runPRMerge(context.Background(), opts, defaultPRMergeEnv())
+		},
+	}
+
+	cmd.Flags().StringVar(&method, "method", "merge", "合并方式：merge（默认）/ squash / rebase")
+	cmd.Flags().StringVar(&message, "message", "", "自定义合并提交信息")
+	cmd.Flags().BoolVar(&deleteBranch, "delete-branch", false, "合并后删除源分支")
+
+	return cmd
+}
+
+// prMergeOptions 收集 pr merge 子命令的参数。
+type prMergeOptions struct {
+	input        string
+	method       string
+	message      string
+	deleteBranch bool
+}
+
+// prMergeEnv 聚合 pr merge 的外部依赖。
+type prMergeEnv struct {
+	git        gitRunner
+	loadConfig func() (*config.Config, error)
+	getPR      func(ctx context.Context, host, token, owner, repo string, number int64) (*api.PullRequest, error)
+	mergePR    func(ctx context.Context, host, token, owner, repo string, number int64, input *api.MergePullRequestInput) error
+	out        io.Writer
+}
+
+// defaultPRMergeEnv 返回基于真实依赖的环境。
+func defaultPRMergeEnv() prMergeEnv {
+	return prMergeEnv{
+		git:        execGitRunner{},
+		loadConfig: config.Load,
+		getPR: func(ctx context.Context, host, token, owner, repo string, number int64) (*api.PullRequest, error) {
+			client := api.NewClient(host, token)
+			return client.GetPullRequest(ctx, owner, repo, number)
+		},
+		mergePR: func(ctx context.Context, host, token, owner, repo string, number int64, input *api.MergePullRequestInput) error {
+			client := api.NewClient(host, token)
+			return client.MergePullRequest(ctx, owner, repo, number, input)
+		},
+		out: os.Stdout,
+	}
+}
+
+// runPRMerge 执行 pr merge 的核心流程。
+func runPRMerge(ctx context.Context, opts prMergeOptions, env prMergeEnv) error {
+	// 1. 加载配置，检查认证状态
+	cfg, err := env.loadConfig()
+	if err != nil {
+		return fmt.Errorf("加载配置失败: %w", err)
+	}
+	if cfg.Token == "" {
+		return fmt.Errorf("未登录，请先运行 'gitee auth login' 进行认证")
+	}
+
+	// 2. 获取当前仓库信息
+	owner, repo, err := getCurrentRepo(env.git)
+	if err != nil {
+		return fmt.Errorf("获取仓库信息失败: %w", err)
+	}
+
+	// 3. 解析输入，确定 PR 编号
+	prNumber, err := parsePRInput(opts.input, owner, repo)
+	if err != nil {
+		return fmt.Errorf("解析 PR 输入失败: %w", err)
+	}
+
+	// 4. 调用 API 获取 PR 详情，校验状态
+	pr, err := env.getPR(ctx, cfg.Host, cfg.Token, owner, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("获取 PR 详情失败: %w", err)
+	}
+
+	// 5. 校验 PR 状态
+	if pr.State != "open" {
+		return fmt.Errorf("PR #%d 状态为 %s，无法合并（只能合并状态为 open 的 PR）", pr.Number, pr.State)
+	}
+
+	if !pr.Mergeable {
+		return fmt.Errorf("PR #%d 当前不可合并，可能存在冲突或其他阻塞条件", pr.Number)
+	}
+
+	// 6. 校验合并方式参数
+	validMethods := map[string]bool{"merge": true, "squash": true, "rebase": true}
+	if !validMethods[opts.method] {
+		return fmt.Errorf("无效的合并方式 '%s'，支持：merge / squash / rebase", opts.method)
+	}
+
+	// 7. 构造合并请求
+	input := &api.MergePullRequestInput{
+		MergeMethod:       opts.method,
+		Message:           opts.message,
+		PruneSourceBranch: opts.deleteBranch,
+	}
+
+	// 8. 执行合并
+	fmt.Fprintf(env.out, "正在合并 PR #%d: %s\n", pr.Number, pr.Title)
+	fmt.Fprintf(env.out, "  合并方式: %s\n", opts.method)
+	if opts.deleteBranch {
+		fmt.Fprintf(env.out, "  合并后将删除源分支: %s\n", pr.Head.Ref)
+	}
+
+	if err := env.mergePR(ctx, cfg.Host, cfg.Token, owner, repo, prNumber, input); err != nil {
+		return fmt.Errorf("合并 PR 失败: %w", err)
+	}
+
+	// 9. 输出成功信息
+	fmt.Fprintf(env.out, "\n✅ PR #%d 合并成功！\n", pr.Number)
+	fmt.Fprintf(env.out, "   标题: %s\n", pr.Title)
+	fmt.Fprintf(env.out, "   链接: %s\n", pr.HTMLURL)
+
+	return nil
 }

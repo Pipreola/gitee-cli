@@ -653,3 +653,71 @@ func (c *Client) GetCombinedStatus(ctx context.Context, owner, repo, ref string)
 	}
 	return &combined, nil
 }
+
+// MergePullRequestInput 是合并 Pull Request 的输入参数。
+type MergePullRequestInput struct {
+	// MergeMethod 是合并方式：merge（默认）/ squash / rebase。
+	MergeMethod string `json:"merge_method,omitempty"`
+	// Title 是自定义合并提交标题（可选）。
+	Title string `json:"title,omitempty"`
+	// Message 是自定义合并提交信息（可选）。
+	Message string `json:"message,omitempty"`
+	// PruneSourceBranch 是否在合并后删除源分支（可选）。
+	PruneSourceBranch bool `json:"prune_source_branch,omitempty"`
+}
+
+// MergePullRequest 调用 PUT /repos/:owner/:repo/pulls/:number/merge 合并 Pull Request。
+func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, number int64, input *MergePullRequestInput) error {
+	if owner == "" || repo == "" {
+		return fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return fmt.Errorf("PR 编号必须大于 0")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	// 构造请求体
+	body, err := json.Marshal(input)
+	if err != nil {
+		return fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// 构造请求
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, fullURL, strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	return nil
+}
