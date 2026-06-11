@@ -54,7 +54,7 @@ func TestRunPRCommentWithBody(t *testing.T) {
 	out := &bytes.Buffer{}
 
 	env := commentEnv{
-		git:        &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
+		git: &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
 		loadConfig: func() (*config.Config, error) {
 			return &config.Config{Host: "https://gitee.com/api/v5", Token: "tok"}, nil
 		},
@@ -62,8 +62,9 @@ func TestRunPRCommentWithBody(t *testing.T) {
 			capturedNumber = number
 			capturedBody = input.Body
 			return &api.Comment{
-				ID:        1,
+				ID:        789,
 				Body:      input.Body,
+				HTMLURL:   "https://gitee.com/owner/repo/pulls/123#note_789",
 				User:      api.User{Login: "testuser"},
 				CreatedAt: "2024-01-01T00:00:00+08:00",
 			}, nil
@@ -87,6 +88,13 @@ func TestRunPRCommentWithBody(t *testing.T) {
 	if !strings.Contains(out.String(), "评论添加成功") {
 		t.Errorf("期望输出包含成功信息，实际: %s", out.String())
 	}
+	// 必须输出新建评论的评论编号与评论 URL
+	if !strings.Contains(out.String(), "789") {
+		t.Errorf("期望输出包含评论编号 789，实际: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "https://gitee.com/owner/repo/pulls/123#note_789") {
+		t.Errorf("期望输出包含评论 URL，实际: %s", out.String())
+	}
 }
 
 // TestRunPRCommentWithBodyFile 验证使用 --body-file 从文件读取评论内容。
@@ -95,7 +103,7 @@ func TestRunPRCommentWithBodyFile(t *testing.T) {
 	out := &bytes.Buffer{}
 
 	env := commentEnv{
-		git:        &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
+		git: &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
 		loadConfig: func() (*config.Config, error) {
 			return &config.Config{Host: "https://gitee.com/api/v5", Token: "tok"}, nil
 		},
@@ -137,7 +145,7 @@ func TestRunPRCommentInteractive(t *testing.T) {
 	in := strings.NewReader("This is a comment\nLine 2\n\n")
 
 	env := commentEnv{
-		git:        &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
+		git: &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
 		loadConfig: func() (*config.Config, error) {
 			return &config.Config{Host: "https://gitee.com/api/v5", Token: "tok"}, nil
 		},
@@ -169,7 +177,7 @@ func TestRunPRCommentInteractive(t *testing.T) {
 // TestRunPRCommentAPIError 验证 API 错误处理。
 func TestRunPRCommentAPIError(t *testing.T) {
 	env := commentEnv{
-		git:        &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
+		git: &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
 		loadConfig: func() (*config.Config, error) {
 			return &config.Config{Host: "https://gitee.com/api/v5", Token: "tok"}, nil
 		},
@@ -194,7 +202,7 @@ func TestRunIssueCommentWithBody(t *testing.T) {
 	out := &bytes.Buffer{}
 
 	env := commentEnv{
-		git:        &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
+		git: &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
 		loadConfig: func() (*config.Config, error) {
 			return &config.Config{Host: "https://gitee.com/api/v5", Token: "tok"}, nil
 		},
@@ -202,8 +210,9 @@ func TestRunIssueCommentWithBody(t *testing.T) {
 			capturedNumber = number
 			capturedBody = input.Body
 			return &api.Comment{
-				ID:        1,
+				ID:        10003,
 				Body:      input.Body,
+				HTMLURL:   "https://gitee.com/owner/repo/issues/I123#note_10003",
 				User:      api.User{Login: "testuser"},
 				CreatedAt: "2024-01-01T00:00:00+08:00",
 			}, nil
@@ -226,6 +235,13 @@ func TestRunIssueCommentWithBody(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "评论添加成功") {
 		t.Errorf("期望输出包含成功信息，实际: %s", out.String())
+	}
+	// 必须输出新建评论的评论编号与评论 URL
+	if !strings.Contains(out.String(), "10003") {
+		t.Errorf("期望输出包含评论编号 10003，实际: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "https://gitee.com/owner/repo/issues/I123#note_10003") {
+		t.Errorf("期望输出包含评论 URL，实际: %s", out.String())
 	}
 }
 

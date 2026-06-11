@@ -109,13 +109,13 @@ type commentOptions struct {
 
 // commentEnv 聚合评论命令的外部依赖。
 type commentEnv struct {
-	git                  gitRunner
-	loadConfig           func() (*config.Config, error)
-	createPRComment      func(ctx context.Context, host, token, owner, repo string, number int64, input *api.CreatePullRequestCommentInput) (*api.Comment, error)
-	createIssueComment   func(ctx context.Context, host, token, owner, repo, number string, input *api.CreateIssueCommentInput) (*api.Comment, error)
-	readFile             func(filename string) ([]byte, error)
-	in                   io.Reader
-	out                  io.Writer
+	git                gitRunner
+	loadConfig         func() (*config.Config, error)
+	createPRComment    func(ctx context.Context, host, token, owner, repo string, number int64, input *api.CreatePullRequestCommentInput) (*api.Comment, error)
+	createIssueComment func(ctx context.Context, host, token, owner, repo, number string, input *api.CreateIssueCommentInput) (*api.Comment, error)
+	readFile           func(filename string) ([]byte, error)
+	in                 io.Reader
+	out                io.Writer
 }
 
 // defaultCommentEnv 返回基于真实依赖的环境。
@@ -171,11 +171,7 @@ func runPRComment(ctx context.Context, number int64, opts commentOptions, env co
 	}
 
 	// 5. 输出成功信息
-	fmt.Fprintf(env.out, "\n✅ 评论添加成功！\n")
-	fmt.Fprintf(env.out, "   PR: #%d\n", number)
-	fmt.Fprintf(env.out, "   作者: %s\n", comment.User.Login)
-	fmt.Fprintf(env.out, "   时间: %s\n", comment.CreatedAt)
-	fmt.Fprintf(env.out, "   内容: %s\n", truncateString(comment.Body, 100))
+	writeCommentResult(env.out, "PR", fmt.Sprintf("#%d", number), comment)
 
 	return nil
 }
@@ -214,13 +210,24 @@ func runIssueComment(ctx context.Context, number string, opts commentOptions, en
 	}
 
 	// 5. 输出成功信息
-	fmt.Fprintf(env.out, "\n✅ 评论添加成功！\n")
-	fmt.Fprintf(env.out, "   Issue: %s\n", number)
-	fmt.Fprintf(env.out, "   作者: %s\n", comment.User.Login)
-	fmt.Fprintf(env.out, "   时间: %s\n", comment.CreatedAt)
-	fmt.Fprintf(env.out, "   内容: %s\n", truncateString(comment.Body, 100))
+	writeCommentResult(env.out, "Issue", number, comment)
 
 	return nil
+}
+
+// writeCommentResult 输出评论创建成功信息，包含评论编号与评论 URL（若有）。
+// target 标明评论挂载的对象类型（PR / Issue），targetID 是其编号。
+func writeCommentResult(w io.Writer, target, targetID string, comment *api.Comment) {
+	fmt.Fprintf(w, "\n✅ 评论添加成功！\n")
+	fmt.Fprintf(w, "   %s: %s\n", target, targetID)
+	fmt.Fprintf(w, "   评论编号: %d\n", comment.ID)
+	fmt.Fprintf(w, "   作者: %s\n", comment.User.Login)
+	fmt.Fprintf(w, "   时间: %s\n", comment.CreatedAt)
+	// Gitee 评论响应包含 html_url 时输出，方便用户直接跳转查看。
+	if comment.HTMLURL != "" {
+		fmt.Fprintf(w, "   链接: %s\n", comment.HTMLURL)
+	}
+	fmt.Fprintf(w, "   内容: %s\n", truncateString(comment.Body, 100))
 }
 
 // getCommentBody 根据 options 获取评论内容，优先级：body > bodyFile > 交互式输入。
