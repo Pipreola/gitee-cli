@@ -83,6 +83,11 @@ func (e *APIError) Error() string {
 
 // do 执行一次请求，处理认证与错误，并将成功响应体反序列化到 out（out 可为 nil）。
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, out interface{}) error {
+	return c.doWithBody(ctx, method, path, query, nil, out)
+}
+
+// doWithBody 执行一次带 body 的请求（用于 POST / PATCH），处理认证与错误。
+func (c *Client) doWithBody(ctx context.Context, method, path string, query url.Values, body io.Reader, out interface{}) error {
 	if query == nil {
 		query = url.Values{}
 	}
@@ -96,11 +101,14 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		fullURL += "?" + encoded
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, fullURL, nil)
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
 	if err != nil {
 		return fmt.Errorf("构造请求失败: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -108,7 +116,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("读取响应失败: %w", err)
 	}
@@ -116,12 +124,12 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &APIError{
 			StatusCode: resp.StatusCode,
-			Message:    parseErrorMessage(body),
+			Message:    parseErrorMessage(respBody),
 		}
 	}
 
-	if out != nil && len(body) > 0 {
-		if err := json.Unmarshal(body, out); err != nil {
+	if out != nil && len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, out); err != nil {
 			return fmt.Errorf("解析响应失败: %w", err)
 		}
 	}
@@ -309,45 +317,9 @@ func (c *Client) CreatePullRequest(ctx context.Context, owner, repo string, inpu
 		return nil, fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
-	// 构造请求
-	query := url.Values{}
-	if c.token != "" {
-		query.Set("access_token", c.token)
-	}
-
-	fullURL := c.baseURL + path
-	if encoded := query.Encode(); encoded != "" {
-		fullURL += "?" + encoded
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, fmt.Errorf("构造请求失败: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("发送请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &APIError{
-			StatusCode: resp.StatusCode,
-			Message:    parseErrorMessage(respBody),
-		}
-	}
-
 	var pr PullRequest
-	if err := json.Unmarshal(respBody, &pr); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	if err := c.doWithBody(ctx, http.MethodPost, path, nil, strings.NewReader(string(body)), &pr); err != nil {
+		return nil, err
 	}
 	return &pr, nil
 }
@@ -364,6 +336,33 @@ func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, number 
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", escapePathSegment(owner), escapePathSegment(repo), number)
 	var pr PullRequest
 	if err := c.do(ctx, http.MethodGet, path, nil, &pr); err != nil {
+		return nil, err
+	}
+	return &pr, nil
+}
+
+// UpdatePullRequestState 调用 PATCH /repos/:owner/:repo/pulls/:number 更新 PR 状态。
+// state 可以是 "open" 或 "closed"。
+func (c *Client) UpdatePullRequestState(ctx context.Context, owner, repo string, number int64, state string) (*PullRequest, error) {
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return nil, fmt.Errorf("PR 编号必须大于 0")
+	}
+	if state != "open" && state != "closed" {
+		return nil, fmt.Errorf("state 必须为 open 或 closed")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	body, err := json.Marshal(map[string]string{"state": state})
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	var pr PullRequest
+	if err := c.doWithBody(ctx, http.MethodPatch, path, nil, strings.NewReader(string(body)), &pr); err != nil {
 		return nil, err
 	}
 	return &pr, nil
@@ -411,6 +410,7 @@ func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Reposi
 type Comment struct {
 	ID        int64  `json:"id"`
 	Body      string `json:"body"`
+	HTMLURL   string `json:"html_url"`
 	User      User   `json:"user"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -436,19 +436,19 @@ func (c *Client) ListPullRequestComments(ctx context.Context, owner, repo string
 // Issue 表示 Gitee Issue 的完整信息。
 // 注意：Gitee Issue 的 number 字段是字符串类型（可能包含字母前缀），与 PR 不同。
 type Issue struct {
-	ID        int64  `json:"id"`
-	Number    string `json:"number"`
-	State     string `json:"state"`
-	HTMLURL   string `json:"html_url"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	User      User   `json:"user"`
-	Labels    []struct {
+	ID      int64  `json:"id"`
+	Number  string `json:"number"`
+	State   string `json:"state"`
+	HTMLURL string `json:"html_url"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	User    User   `json:"user"`
+	Labels  []struct {
 		ID    int64  `json:"id"`
 		Name  string `json:"name"`
 		Color string `json:"color"`
 	} `json:"labels"`
-	Assignee  *User  `json:"assignee"`
+	Assignee  *User `json:"assignee"`
 	Milestone *struct {
 		ID     int64  `json:"id"`
 		Title  string `json:"title"`
@@ -547,6 +547,33 @@ func (c *Client) GetIssue(ctx context.Context, owner, repo, number string) (*Iss
 	return &issue, nil
 }
 
+// UpdateIssueState 调用 PATCH /repos/:owner/:repo/issues/:number 更新 Issue 状态。
+// state 可以是 "open" 或 "closed"。
+func (c *Client) UpdateIssueState(ctx context.Context, owner, repo, number, state string) (*Issue, error) {
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number == "" {
+		return nil, fmt.Errorf("Issue 编号不能为空")
+	}
+	if state != "open" && state != "closed" {
+		return nil, fmt.Errorf("state 必须为 open 或 closed")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/issues/%s", escapePathSegment(owner), escapePathSegment(repo), escapePathSegment(number))
+
+	body, err := json.Marshal(map[string]string{"state": state, "repo": repo})
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	var issue Issue
+	if err := c.doWithBody(ctx, http.MethodPatch, path, nil, strings.NewReader(string(body)), &issue); err != nil {
+		return nil, err
+	}
+	return &issue, nil
+}
+
 // ListIssueComments 调用 GET /repos/:owner/:repo/issues/:number/comments 获取 Issue 评论列表。
 func (c *Client) ListIssueComments(ctx context.Context, owner, repo, number string) ([]Comment, error) {
 	if owner == "" || repo == "" {
@@ -562,6 +589,83 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo, number stri
 		return nil, err
 	}
 	return comments, nil
+}
+
+// CreateIssueInput 是创建 Issue 的输入参数。
+type CreateIssueInput struct {
+	// Title 是 Issue 的标题（必填）。
+	Title string `json:"title"`
+	// Body 是 Issue 的描述内容（可选）。
+	Body string `json:"body,omitempty"`
+	// Labels 是标签列表（可选），逗号分隔的字符串。
+	Labels string `json:"labels,omitempty"`
+	// Assignees 是指派人列表（可选），逗号分隔的用户名。
+	Assignees string `json:"assignees,omitempty"`
+	// MilestoneNumber 是里程碑编号（可选）。
+	MilestoneNumber int64 `json:"milestone,omitempty"`
+}
+
+// CreateIssue 调用 POST /repos/:owner/:repo/issues 创建 Issue。
+func (c *Client) CreateIssue(ctx context.Context, owner, repo string, input *CreateIssueInput) (*Issue, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input 不能为空")
+	}
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if input.Title == "" {
+		return nil, fmt.Errorf("title 是必填参数")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/issues", escapePathSegment(owner), escapePathSegment(repo))
+
+	// 构造请求体
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// 构造请求
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	var issue Issue
+	if err := json.Unmarshal(respBody, &issue); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return &issue, nil
 }
 
 // CIStatus 表示 Gitee commit 的 CI 状态（来自 GET /repos/:owner/:repo/commits/:ref/statuses）。
@@ -730,4 +834,148 @@ func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, numbe
 	}
 
 	return nil
+}
+
+// CreatePullRequestCommentInput 是创建 PR 评论的输入参数。
+type CreatePullRequestCommentInput struct {
+	// Body 是评论内容（必填）。
+	Body string `json:"body"`
+}
+
+// CreatePullRequestComment 调用 POST /repos/:owner/:repo/pulls/:number/comments 创建 PR 评论。
+func (c *Client) CreatePullRequestComment(ctx context.Context, owner, repo string, number int64, input *CreatePullRequestCommentInput) (*Comment, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input 不能为空")
+	}
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return nil, fmt.Errorf("PR 编号必须大于 0")
+	}
+	if input.Body == "" {
+		return nil, fmt.Errorf("评论内容不能为空")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/comments", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	// 构造请求体
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// 构造请求
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	var comment Comment
+	if err := json.Unmarshal(respBody, &comment); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return &comment, nil
+}
+
+// CreateIssueCommentInput 是创建 Issue 评论的输入参数。
+type CreateIssueCommentInput struct {
+	// Body 是评论内容（必填）。
+	Body string `json:"body"`
+}
+
+// CreateIssueComment 调用 POST /repos/:owner/:repo/issues/:number/comments 创建 Issue 评论。
+func (c *Client) CreateIssueComment(ctx context.Context, owner, repo, number string, input *CreateIssueCommentInput) (*Comment, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input 不能为空")
+	}
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number == "" {
+		return nil, fmt.Errorf("Issue 编号不能为空")
+	}
+	if input.Body == "" {
+		return nil, fmt.Errorf("评论内容不能为空")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/issues/%s/comments", escapePathSegment(owner), escapePathSegment(repo), escapePathSegment(number))
+
+	// 构造请求体
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// 构造请求
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	var comment Comment
+	if err := json.Unmarshal(respBody, &comment); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return &comment, nil
 }
