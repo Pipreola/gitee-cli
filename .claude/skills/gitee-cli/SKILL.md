@@ -601,4 +601,3 @@ gitee issue view IABCDE --comments
 gitee ci status                            # 当前分支
 gitee ci status --ref abc1234 --json
 ```
-
