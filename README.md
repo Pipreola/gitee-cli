@@ -208,6 +208,14 @@ go test ./... -cover
 - `user.openapi.yaml` —— 获取当前认证用户接口
 - `pr.openapi.yaml` —— Pull Request 创建与查询接口
 
+## Claude / Multica Skill
+
+仓库同时提供一份针对 Claude / Multica 智能体的 skill 说明书，覆盖一期 9 个命令的参数、可运行示例、鉴权前置与常见错误处理：
+
+- `.claude/skills/gitee-cli/SKILL.md`
+
+智能体在 Gitee 仓库目录下被要求执行 PR / Issue / CI 相关任务时可直接加载该 skill。
+
 ## 许可证
 
 MIT License
