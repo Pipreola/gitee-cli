@@ -611,3 +611,155 @@ func TestGetCombinedStatusValidation(t *testing.T) {
 		t.Error("期望 ref 为空时报错")
 	}
 }
+
+// TestMergePullRequestFormDataContract 验证 PUT /pulls/{number}/merge 严格遵循
+// Gitee v5 Swagger（v5.4.92）定义的 formData contract：
+//   - HTTP 方法 PUT，路径含 owner / repo / number
+//   - Content-Type 为 application/x-www-form-urlencoded（不是 JSON）
+//   - 字段命名：merge_method / title / description / prune_source_branch
+//   - access_token 也以 form 字段提交，不放在 query
+//   - 自定义合并信息映射到 description（不是 message）
+func TestMergePullRequestFormDataContract(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. HTTP 方法与路径
+		if r.Method != http.MethodPut {
+			t.Errorf("Method = %q, 期望 PUT", r.Method)
+		}
+		if r.URL.Path != "/repos/owner/repo/pulls/123/merge" {
+			t.Errorf("Path = %q, 期望 /repos/owner/repo/pulls/123/merge", r.URL.Path)
+		}
+		// 2. Content-Type 必须是 form-urlencoded
+		ct := r.Header.Get("Content-Type")
+		if !strings.HasPrefix(ct, "application/x-www-form-urlencoded") {
+			t.Errorf("Content-Type = %q, 期望 application/x-www-form-urlencoded", ct)
+		}
+		// 3. access_token 必须在 form body 中，不应残留在 query
+		if got := r.URL.Query().Get("access_token"); got != "" {
+			t.Errorf("query access_token = %q, 期望不在 query 中", got)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm 失败: %v", err)
+		}
+		// 4. form 字段命名严格符合 Gitee v5 contract
+		if got := r.PostForm.Get("access_token"); got != "tok123" {
+			t.Errorf("form access_token = %q, 期望 tok123", got)
+		}
+		if got := r.PostForm.Get("merge_method"); got != "squash" {
+			t.Errorf("form merge_method = %q, 期望 squash", got)
+		}
+		if got := r.PostForm.Get("title"); got != "release v1" {
+			t.Errorf("form title = %q, 期望 release v1", got)
+		}
+		// description 是 Gitee 的字段名，不是 message
+		if got := r.PostForm.Get("description"); got != "merge body" {
+			t.Errorf("form description = %q, 期望 merge body", got)
+		}
+		// prune_source_branch=true 必须传字符串 "true"
+		if got := r.PostForm.Get("prune_source_branch"); got != "true" {
+			t.Errorf("form prune_source_branch = %q, 期望 true", got)
+		}
+		// 不应该出现 message 字段（这是错误的字段名）
+		if r.PostForm.Has("message") {
+			t.Errorf("form 出现非法字段 message: %q, 应使用 description", r.PostForm.Get("message"))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok123")
+	err := client.MergePullRequest(context.Background(), "owner", "repo", 123, &MergePullRequestInput{
+		MergeMethod:       "squash",
+		Title:             "release v1",
+		Description:       "merge body",
+		PruneSourceBranch: true,
+	})
+	if err != nil {
+		t.Fatalf("MergePullRequest 返回错误: %v", err)
+	}
+}
+
+// TestMergePullRequestOmitsEmptyFields 验证空字段不被发送，
+// 使服务端能应用默认值（merge_method 默认 merge）。
+func TestMergePullRequestOmitsEmptyFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm 失败: %v", err)
+		}
+		// 未设置的字段应不出现在表单中
+		for _, key := range []string{"title", "description", "prune_source_branch"} {
+			if r.PostForm.Has(key) {
+				t.Errorf("空字段 %s 不应被发送，实际值: %q", key, r.PostForm.Get(key))
+			}
+		}
+		// merge_method 仍应被发送
+		if got := r.PostForm.Get("merge_method"); got != "merge" {
+			t.Errorf("merge_method = %q, 期望 merge", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	err := client.MergePullRequest(context.Background(), "o", "r", 1, &MergePullRequestInput{
+		MergeMethod: "merge",
+	})
+	if err != nil {
+		t.Fatalf("MergePullRequest 返回错误: %v", err)
+	}
+}
+
+// TestMergePullRequestErrorResponse 验证非 2xx 响应被转为带状态码与消息的 APIError。
+func TestMergePullRequestErrorResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_, _ = w.Write([]byte(`{"message":"Pull Request is not mergeable"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	err := client.MergePullRequest(context.Background(), "o", "r", 1, &MergePullRequestInput{MergeMethod: "merge"})
+	if err == nil {
+		t.Fatal("期望返回错误，实际为 nil")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("错误类型 = %T, 期望 *APIError", err)
+	}
+	if apiErr.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("StatusCode = %d, 期望 405", apiErr.StatusCode)
+	}
+	if !strings.Contains(apiErr.Message, "not mergeable") {
+		t.Errorf("Message = %q, 期望包含 not mergeable", apiErr.Message)
+	}
+}
+
+// TestMergePullRequestValidation 验证 owner/repo/number 的本地校验。
+func TestMergePullRequestValidation(t *testing.T) {
+	client := NewClient("https://example.com", "tok")
+	if err := client.MergePullRequest(context.Background(), "", "r", 1, &MergePullRequestInput{}); err == nil {
+		t.Error("期望 owner 为空时报错")
+	}
+	if err := client.MergePullRequest(context.Background(), "o", "", 1, &MergePullRequestInput{}); err == nil {
+		t.Error("期望 repo 为空时报错")
+	}
+	if err := client.MergePullRequest(context.Background(), "o", "r", 0, &MergePullRequestInput{}); err == nil {
+		t.Error("期望 number 为 0 时报错")
+	}
+}
+
+// TestMergePullRequestPathEscaping 验证 owner/repo 中的特殊字符被正确转义。
+func TestMergePullRequestPathEscaping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantEscaped := "/repos/my%2Forg/my%20repo/pulls/9/merge"
+		if got := r.URL.EscapedPath(); got != wantEscaped {
+			t.Errorf("EscapedPath = %q, 期望 %q", got, wantEscaped)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	if err := client.MergePullRequest(context.Background(), "my/org", "my repo", 9, &MergePullRequestInput{MergeMethod: "merge"}); err != nil {
+		t.Fatalf("MergePullRequest 返回错误: %v", err)
+	}
+}

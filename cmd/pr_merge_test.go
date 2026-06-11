@@ -196,6 +196,81 @@ func TestRunPRMerge(t *testing.T) {
 	}
 }
 
+// TestRunPRMergeInputMapping 断言命令层 opts 字段被正确传递到 API 入参。
+// 重点：CLI --message 必须映射到 API 的 Description 字段（对应 Gitee v5 form 字段 description）。
+func TestRunPRMergeInputMapping(t *testing.T) {
+	tests := []struct {
+		name      string
+		opts      prMergeOptions
+		wantInput api.MergePullRequestInput
+	}{
+		{
+			name: "默认 merge",
+			opts: prMergeOptions{input: "1", method: "merge"},
+			wantInput: api.MergePullRequestInput{
+				MergeMethod: "merge",
+			},
+		},
+		{
+			name: "squash + 自定义 message + 删除分支",
+			opts: prMergeOptions{
+				input:        "2",
+				method:       "squash",
+				message:      "压缩多个提交",
+				deleteBranch: true,
+			},
+			wantInput: api.MergePullRequestInput{
+				MergeMethod:       "squash",
+				Description:       "压缩多个提交",
+				PruneSourceBranch: true,
+			},
+		},
+		{
+			name: "rebase",
+			opts: prMergeOptions{input: "3", method: "rebase"},
+			wantInput: api.MergePullRequestInput{
+				MergeMethod: "rebase",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got *api.MergePullRequestInput
+			env := prMergeEnv{
+				git:        &fakeGitRunner{remoteURL: "https://gitee.com/owner/repo.git"},
+				loadConfig: func() (*config.Config, error) {
+					return &config.Config{Host: "https://gitee.com/api/v5", Token: "tok"}, nil
+				},
+				getPR: func(ctx context.Context, host, token, owner, repo string, number int64) (*api.PullRequest, error) {
+					return &api.PullRequest{Number: number, State: "open", Mergeable: true, Title: "T", Head: api.Branch{Ref: "feat"}}, nil
+				},
+				mergePR: func(ctx context.Context, host, token, owner, repo string, number int64, input *api.MergePullRequestInput) error {
+					got = input
+					return nil
+				},
+				out: &bytes.Buffer{},
+			}
+
+			if err := runPRMerge(context.Background(), tt.opts, env); err != nil {
+				t.Fatalf("runPRMerge 返回错误: %v", err)
+			}
+			if got == nil {
+				t.Fatal("mergePR 未被调用")
+			}
+			if got.MergeMethod != tt.wantInput.MergeMethod {
+				t.Errorf("MergeMethod = %q, 期望 %q", got.MergeMethod, tt.wantInput.MergeMethod)
+			}
+			if got.Description != tt.wantInput.Description {
+				t.Errorf("Description = %q, 期望 %q (CLI --message 必须映射到 Description)", got.Description, tt.wantInput.Description)
+			}
+			if got.PruneSourceBranch != tt.wantInput.PruneSourceBranch {
+				t.Errorf("PruneSourceBranch = %v, 期望 %v", got.PruneSourceBranch, tt.wantInput.PruneSourceBranch)
+			}
+		})
+	}
+}
+
 func TestParsePRInputForMerge(t *testing.T) {
 	tests := []struct {
 		name    string
