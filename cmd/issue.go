@@ -7,11 +7,12 @@ func newIssueCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "issue <command>",
 		Short: "管理 Issue",
-		Long:  "管理 Gitee 仓库的 Issue，包括列表查看、详情查看等功能。",
+		Long:  "管理 Gitee 仓库的 Issue，包括列表查看、详情查看、创建等功能。",
 	}
 
 	cmd.AddCommand(newIssueListCmd())
 	cmd.AddCommand(newIssueViewCmd())
+	cmd.AddCommand(newIssueCreateCmd())
 
 	return cmd
 }

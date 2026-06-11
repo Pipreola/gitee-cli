@@ -436,19 +436,19 @@ func (c *Client) ListPullRequestComments(ctx context.Context, owner, repo string
 // Issue 表示 Gitee Issue 的完整信息。
 // 注意：Gitee Issue 的 number 字段是字符串类型（可能包含字母前缀），与 PR 不同。
 type Issue struct {
-	ID        int64  `json:"id"`
-	Number    string `json:"number"`
-	State     string `json:"state"`
-	HTMLURL   string `json:"html_url"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	User      User   `json:"user"`
-	Labels    []struct {
+	ID      int64  `json:"id"`
+	Number  string `json:"number"`
+	State   string `json:"state"`
+	HTMLURL string `json:"html_url"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	User    User   `json:"user"`
+	Labels  []struct {
 		ID    int64  `json:"id"`
 		Name  string `json:"name"`
 		Color string `json:"color"`
 	} `json:"labels"`
-	Assignee  *User  `json:"assignee"`
+	Assignee  *User `json:"assignee"`
 	Milestone *struct {
 		ID     int64  `json:"id"`
 		Title  string `json:"title"`
@@ -562,6 +562,83 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo, number stri
 		return nil, err
 	}
 	return comments, nil
+}
+
+// CreateIssueInput 是创建 Issue 的输入参数。
+type CreateIssueInput struct {
+	// Title 是 Issue 的标题（必填）。
+	Title string `json:"title"`
+	// Body 是 Issue 的描述内容（可选）。
+	Body string `json:"body,omitempty"`
+	// Labels 是标签列表（可选），逗号分隔的字符串。
+	Labels string `json:"labels,omitempty"`
+	// Assignees 是指派人列表（可选），逗号分隔的用户名。
+	Assignees string `json:"assignees,omitempty"`
+	// MilestoneNumber 是里程碑编号（可选）。
+	MilestoneNumber int64 `json:"milestone,omitempty"`
+}
+
+// CreateIssue 调用 POST /repos/:owner/:repo/issues 创建 Issue。
+func (c *Client) CreateIssue(ctx context.Context, owner, repo string, input *CreateIssueInput) (*Issue, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input 不能为空")
+	}
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if input.Title == "" {
+		return nil, fmt.Errorf("title 是必填参数")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/issues", escapePathSegment(owner), escapePathSegment(repo))
+
+	// 构造请求体
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// 构造请求
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	var issue Issue
+	if err := json.Unmarshal(respBody, &issue); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return &issue, nil
 }
 
 // CIStatus 表示 Gitee commit 的 CI 状态（来自 GET /repos/:owner/:repo/commits/:ref/statuses）。
