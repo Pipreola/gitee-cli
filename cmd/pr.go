@@ -28,6 +28,7 @@ func newPRCmd() *cobra.Command {
 	prCmd.AddCommand(newPRListCmd())
 	prCmd.AddCommand(newPRViewCmd())
 	prCmd.AddCommand(newPRCheckoutCmd())
+	prCmd.AddCommand(newPRCommentCmd())
 	return prCmd
 }
 
