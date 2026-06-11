@@ -412,6 +412,78 @@ paths:
               example:
                 message: "Not Found"
 
+  /repos/{owner}/{repo}/pulls/{number}.diff:
+    get:
+      summary: 获取 Pull Request 的 unified diff
+      description: |
+        返回指定 PR 的 unified diff 纯文本。CLI 命令 `gitee pr diff` 使用此接口。
+        支持 --name-only（仅输出变更文件名）和 --color（控制着色）选项。
+      operationId: getPullRequestDiff
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "owner"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "repo"
+        - name: number
+          in: path
+          required: true
+          description: Pull Request 编号
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 返回 unified diff 纯文本
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                diff --git a/main.go b/main.go
+                --- a/main.go
+                +++ b/main.go
+                @@ -1,3 +1,4 @@
+                 package main
+                +import "os"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+        '404':
+          description: 仓库或 PR 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Not Found"
+
   /repos/{owner}/{repo}/pulls/{number}/comments:
     get:
       summary: 获取 Pull Request 评论列表
