@@ -1,0 +1,22 @@
+# 编译产物
+/gitee
+/gitee-cli
+*.exe
+dist/
+
+# 测试与覆盖率
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+
+# GoReleaser
+dist/
+*.tar.gz
+*.zip
+checksums.txt

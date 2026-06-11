@@ -1,0 +1,82 @@
+openapi: 3.0.3
+info:
+  title: gitee-cli 用户接口
+  description: |
+    gitee-cli 当前阶段封装的 Gitee OpenAPI v5 接口文档。
+    本阶段仅实现连通性验证所需的「获取当前用户」接口，后续阶段将逐步扩展。
+  version: 0.1.0
+servers:
+  - url: https://gitee.com/api/v5
+    description: Gitee OpenAPI v5 正式环境
+security:
+  - accessToken: []
+paths:
+  /user:
+    get:
+      summary: 获取当前认证用户
+      description: |
+        根据请求中携带的 access_token 返回当前登录用户信息，
+        用于校验私人令牌有效性。对应 CLI 命令 `gitee auth login`。
+      operationId: getCurrentUser
+      parameters:
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee 私人令牌（personal access token）
+          schema:
+            type: string
+          example: "abc123def456"
+      responses:
+        '200':
+          description: 成功返回当前用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: 令牌无效或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    accessToken:
+      type: apiKey
+      in: query
+      name: access_token
+      description: Gitee v5 通过查询参数 access_token 传递私人令牌
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 用户唯一 ID
+          example: 123456
+        login:
+          type: string
+          description: 用户登录名
+          example: "alice"
+        name:
+          type: string
+          description: 用户昵称
+          example: "Alice"
+        avatar_url:
+          type: string
+          format: uri
+          description: 头像地址
+          example: "https://gitee.com/assets/avatar.png"
+        html_url:
+          type: string
+          format: uri
+          description: 用户主页地址
+          example: "https://gitee.com/alice"
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: 错误信息
+          example: "401 Unauthorized"

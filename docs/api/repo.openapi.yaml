@@ -1,0 +1,198 @@
+openapi: 3.0.0
+info:
+  title: Gitee Repository API
+  description: Gitee 仓库查看接口文档
+  version: 1.0.0
+  contact:
+    name: Gitee API
+    url: https://gitee.com/api/v5/swagger
+
+servers:
+  - url: https://gitee.com/api/v5
+    description: Gitee OpenAPI v5
+
+paths:
+  /repos/{owner}/{repo}:
+    get:
+      summary: 获取仓库信息
+      description: 获取指定仓库的基本信息与统计数据，供 `gitee repo view` 显示。
+      operationId: getRepository
+      tags:
+        - Repository
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "owner"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "repo"
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+        '404':
+          description: 仓库不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Not Found"
+
+components:
+  securitySchemes:
+    access_token:
+      type: apiKey
+      in: query
+      name: access_token
+      description: Gitee Personal Access Token
+
+  schemas:
+    Repository:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 仓库 ID
+          example: 123
+        full_name:
+          type: string
+          description: 仓库全名（命名空间/仓库路径）
+          example: "owner/repo"
+        human_name:
+          type: string
+          description: 仓库可读名称
+          example: "演示仓库"
+        name:
+          type: string
+          description: 仓库路径（path）
+          example: "repo"
+        owner:
+          $ref: '#/components/schemas/User'
+        description:
+          type: string
+          description: 仓库描述
+          example: "这是一个演示仓库"
+        private:
+          type: boolean
+          description: 是否私有
+          example: false
+        fork:
+          type: boolean
+          description: 是否为 fork 仓库
+          example: false
+        html_url:
+          type: string
+          description: 仓库网页 URL
+          example: "https://gitee.com/owner/repo"
+        homepage:
+          type: string
+          description: 仓库主页 URL
+          example: "https://example.com"
+        language:
+          type: string
+          description: 主要编程语言
+          example: "Go"
+        stargazers_count:
+          type: integer
+          description: Star 数量
+          example: 42
+        forks_count:
+          type: integer
+          description: Fork 数量
+          example: 7
+        watchers_count:
+          type: integer
+          description: Watch 数量
+          example: 15
+        open_issues_count:
+          type: integer
+          description: 开放 Issue 数量
+          example: 3
+        default_branch:
+          type: string
+          description: 默认分支名
+          example: "main"
+        license:
+          type: string
+          description: 许可证类型
+          example: "MIT"
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+          example: "2023-01-01T10:00:00+08:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新时间
+          example: "2024-01-15T15:30:00+08:00"
+        pushed_at:
+          type: string
+          format: date-time
+          description: 最近推送时间
+          example: "2024-01-15T16:00:00+08:00"
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 用户 ID
+          example: 1
+        login:
+          type: string
+          description: 用户登录名
+          example: "owner"
+        name:
+          type: string
+          description: 用户昵称
+          example: "Owner Name"
+        avatar_url:
+          type: string
+          description: 用户头像 URL
+          example: "https://gitee.com/assets/no_portrait.png"
+        html_url:
+          type: string
+          description: 用户主页 URL
+          example: "https://gitee.com/owner"
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: 错误信息
+          example: "参数错误"
+        error:
+          type: string
+          description: 错误代码或详细信息
+          example: "invalid_parameter"
