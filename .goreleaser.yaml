@@ -1,0 +1,114 @@
+# GoReleaser 配置文件
+# 文档: https://goreleaser.com
+
+version: 2
+
+project_name: gitee-cli
+
+before:
+  hooks:
+    # 在构建前确保依赖是最新的
+    - go mod tidy
+    # 运行测试（如果有）
+    # - go test -v ./...
+
+builds:
+  - id: gitee
+    main: ./main.go
+    binary: gitee
+    env:
+      - CGO_ENABLED=0
+    # 注入版本信息
+    ldflags:
+      - -s -w
+      - -X main.versionStr={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+    # 多平台交叉编译
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # 注: Go 1.17+ 支持 windows/arm64，发布矩阵覆盖全部 OS×ARCH 组合
+
+archives:
+  - id: gitee-archive
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'merge conflict'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
+  groups:
+    - title: 🚀 Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 🐛 Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 📚 Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: 🔧 Others
+      order: 999
+
+release:
+  github:
+    owner: Pipreola
+    name: gitee-cli
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+  header: |
+    ## gitee-cli v{{.Version}}
+
+    感谢使用 gitee-cli！本版本包含以下更新：
+  footer: |
+    ---
+
+    **完整更新日志**: https://github.com/Pipreola/gitee-cli/compare/{{.PreviousTag}}...{{.Tag}}
+
+    ### 安装说明
+
+    #### 使用安装脚本（推荐）
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Pipreola/gitee-cli/main/install.sh | bash
+    ```
+
+    #### 手动下载
+    从上方下载适合您系统的压缩包，解压后将 `gitee` 可执行文件移动到 PATH 中的目录。

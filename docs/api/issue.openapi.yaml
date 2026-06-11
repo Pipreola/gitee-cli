@@ -1,0 +1,511 @@
+openapi: 3.0.0
+info:
+  title: Gitee Issue API
+  description: Gitee Issue 查询、查看与评论接口文档
+  version: 1.0.0
+  contact:
+    name: Gitee API
+    url: https://gitee.com/api/v5/swagger
+
+servers:
+  - url: https://gitee.com/api/v5
+    description: Gitee OpenAPI v5
+
+paths:
+  /repos/{owner}/{repo}/issues:
+    get:
+      summary: 列出 Issue
+      description: 分页查询指定仓库的 Issue 列表，支持按状态、标签、里程碑过滤与排序。
+      operationId: listIssues
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: Issue 状态过滤
+          schema:
+            type: string
+            enum: [open, closed, progressing, rejected, all]
+            default: open
+          example: open
+        - name: labels
+          in: query
+          required: false
+          description: 标签过滤，逗号分隔
+          schema:
+            type: string
+          example: "bug,urgent"
+        - name: sort
+          in: query
+          required: false
+          description: 排序字段
+          schema:
+            type: string
+            enum: [created, updated, comments]
+            default: created
+        - name: direction
+          in: query
+          required: false
+          description: 排序方向
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: since
+          in: query
+          required: false
+          description: 时间过滤，返回此日期后更新的 Issue（RFC3339 格式）
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: milestone
+          in: query
+          required: false
+          description: 里程碑编号过滤
+          schema:
+            type: integer
+          example: 1
+        - name: page
+          in: query
+          required: false
+          description: 页码（从 1 开始）
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          description: 每页返回的 Issue 数量
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 30
+      responses:
+        '200':
+          description: 成功返回 Issue 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Issue'
+              example:
+                - id: 123456
+                  number: "I1ABC"
+                  state: "open"
+                  title: "修复登录页面样式问题"
+                  body: "登录页面在移动端显示异常，需要调整响应式布局。"
+                  html_url: "https://gitee.com/pipreola/gitee-cli/issues/I1ABC"
+                  user:
+                    id: 1001
+                    login: "alice"
+                    name: "Alice"
+                    avatar_url: "https://gitee.com/assets/no_portrait.png"
+                    html_url: "https://gitee.com/alice"
+                  labels:
+                    - id: 1
+                      name: "bug"
+                      color: "fc2929"
+                  assignee:
+                    id: 1002
+                    login: "bob"
+                    name: "Bob"
+                  milestone:
+                    id: 10
+                    title: "v1.0"
+                    number: 1
+                  comments: 5
+                  created_at: "2024-01-01T10:00:00+08:00"
+                  updated_at: "2024-01-05T15:30:00+08:00"
+        '401':
+          description: 未授权，access_token 无效或缺失
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足，无权访问此仓库
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 仓库不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /repos/{owner}/{repo}/issues/{number}:
+    get:
+      summary: 查看 Issue 详情
+      description: 获取指定 Issue 的详细信息，包括标题、正文、标签、指派人、里程碑等。
+      operationId: getIssue
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: number
+          in: path
+          required: true
+          description: Issue 编号（Gitee 支持字符串型编号）
+          schema:
+            type: string
+          example: "I1ABC"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功返回 Issue 详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+              example:
+                id: 123456
+                number: "I1ABC"
+                state: "open"
+                title: "修复登录页面样式问题"
+                body: "登录页面在移动端显示异常，需要调整响应式布局。\n\n复现步骤：\n1. 使用手机访问登录页面\n2. 观察页面布局"
+                html_url: "https://gitee.com/pipreola/gitee-cli/issues/I1ABC"
+                user:
+                  id: 1001
+                  login: "alice"
+                  name: "Alice"
+                  avatar_url: "https://gitee.com/assets/no_portrait.png"
+                  html_url: "https://gitee.com/alice"
+                labels:
+                  - id: 1
+                    name: "bug"
+                    color: "fc2929"
+                  - id: 2
+                    name: "urgent"
+                    color: "eb6420"
+                assignee:
+                  id: 1002
+                  login: "bob"
+                  name: "Bob"
+                milestone:
+                  id: 10
+                  title: "v1.0"
+                  number: 1
+                comments: 5
+                created_at: "2024-01-01T10:00:00+08:00"
+                updated_at: "2024-01-05T15:30:00+08:00"
+        '401':
+          description: 未授权，access_token 无效或缺失
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足，无权访问此 Issue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Issue 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /repos/{owner}/{repo}/issues/{number}/comments:
+    get:
+      summary: 查看 Issue 评论列表
+      description: 获取指定 Issue 的所有评论。
+      operationId: listIssueComments
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: number
+          in: path
+          required: true
+          description: Issue 编号
+          schema:
+            type: string
+          example: "I1ABC"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功返回评论列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+              example:
+                - id: 10001
+                  body: "我来看看这个问题。"
+                  user:
+                    id: 1002
+                    login: "bob"
+                    name: "Bob"
+                  created_at: "2024-01-02T09:00:00+08:00"
+                  updated_at: "2024-01-02T09:00:00+08:00"
+                - id: 10002
+                  body: "已经在本地复现了，正在修复中。"
+                  user:
+                    id: 1002
+                    login: "bob"
+                    name: "Bob"
+                  created_at: "2024-01-03T14:30:00+08:00"
+                  updated_at: "2024-01-03T14:30:00+08:00"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Issue 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Issue:
+      type: object
+      description: Gitee Issue 详细信息
+      required:
+        - id
+        - number
+        - state
+        - title
+        - user
+        - html_url
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Issue 的唯一 ID
+          example: 123456
+        number:
+          type: string
+          description: Issue 编号（字符串类型，可能包含字母前缀）
+          example: "I1ABC"
+        state:
+          type: string
+          description: Issue 状态
+          enum: [open, closed, progressing, rejected]
+          example: "open"
+        html_url:
+          type: string
+          format: uri
+          description: Issue 网页链接
+          example: "https://gitee.com/owner/repo/issues/I1ABC"
+        title:
+          type: string
+          description: Issue 标题
+          example: "修复登录页面样式问题"
+        body:
+          type: string
+          description: Issue 正文内容（Markdown 格式）
+          example: "登录页面在移动端显示异常，需要调整响应式布局。"
+        user:
+          $ref: '#/components/schemas/User'
+          description: Issue 创建者
+        labels:
+          type: array
+          description: Issue 标签列表
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              color:
+                type: string
+          example:
+            - id: 1
+              name: "bug"
+              color: "fc2929"
+        assignee:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          nullable: true
+          description: Issue 指派人（可为 null）
+        milestone:
+          type: object
+          nullable: true
+          description: Issue 所属里程碑（可为 null）
+          properties:
+            id:
+              type: integer
+            title:
+              type: string
+            number:
+              type: integer
+        comments:
+          type: integer
+          description: 评论数量
+          example: 5
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间（RFC3339 格式）
+          example: "2024-01-01T10:00:00+08:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: 最后更新时间（RFC3339 格式）
+          example: "2024-01-05T15:30:00+08:00"
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 关闭时间（仅当 state 为 closed 时有值）
+          example: "2024-01-10T11:00:00+08:00"
+
+    User:
+      type: object
+      description: Gitee 用户信息
+      properties:
+        id:
+          type: integer
+          description: 用户唯一 ID
+          example: 1001
+        login:
+          type: string
+          description: 用户登录名
+          example: "alice"
+        name:
+          type: string
+          description: 用户昵称
+          example: "Alice"
+        avatar_url:
+          type: string
+          format: uri
+          description: 用户头像 URL
+          example: "https://gitee.com/assets/no_portrait.png"
+        html_url:
+          type: string
+          format: uri
+          description: 用户主页 URL
+          example: "https://gitee.com/alice"
+
+    Comment:
+      type: object
+      description: Issue 或 PR 的评论
+      required:
+        - id
+        - body
+        - user
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: 评论唯一 ID
+          example: 10001
+        body:
+          type: string
+          description: 评论内容（Markdown 格式）
+          example: "我来看看这个问题。"
+        user:
+          $ref: '#/components/schemas/User'
+          description: 评论者信息
+        created_at:
+          type: string
+          format: date-time
+          description: 评论创建时间
+          example: "2024-01-02T09:00:00+08:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: 评论最后更新时间
+          example: "2024-01-02T09:00:00+08:00"
+
+    ErrorResponse:
+      type: object
+      description: 通用错误响应
+      properties:
+        message:
+          type: string
+          description: 错误信息
+          example: "401 Unauthorized"
+        error:
+          type: string
+          description: 错误详情
+          example: "access_token 无效"
+
+  securitySchemes:
+    access_token:
+      type: apiKey
+      in: query
+      name: access_token
+      description: Gitee OpenAPI v5 使用 access_token 查询参数进行认证

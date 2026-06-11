@@ -1,0 +1,534 @@
+openapi: 3.0.0
+info:
+  title: Gitee Pull Request API
+  description: Gitee Pull Request 创建、查询、查看与评论接口文档
+  version: 1.2.0
+  contact:
+    name: Gitee API
+    url: https://gitee.com/api/v5/swagger
+
+servers:
+  - url: https://gitee.com/api/v5
+    description: Gitee OpenAPI v5
+
+paths:
+  /repos/{owner}/{repo}/pulls:
+    get:
+      summary: 列出 Pull Request
+      description: 分页查询指定仓库的 Pull Request 列表，支持按状态、分支、标签、里程碑过滤与排序。
+      operationId: listPullRequests
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: PR 状态过滤
+          schema:
+            type: string
+            enum: [open, closed, merged, all]
+            default: open
+          example: open
+        - name: head
+          in: query
+          required: false
+          description: 源分支过滤，格式为 `namespace:branch`
+          schema:
+            type: string
+          example: "myname:feature/new"
+        - name: base
+          in: query
+          required: false
+          description: 目标分支过滤
+          schema:
+            type: string
+          example: "main"
+        - name: sort
+          in: query
+          required: false
+          description: 排序字段
+          schema:
+            type: string
+            enum: [created, updated, popularity, long-running]
+            default: created
+        - name: direction
+          in: query
+          required: false
+          description: 排序方向
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: milestone_number
+          in: query
+          required: false
+          description: 里程碑编号过滤
+          schema:
+            type: integer
+          example: 1
+        - name: labels
+          in: query
+          required: false
+          description: 标签过滤，逗号分隔
+          schema:
+            type: string
+          example: "bug,urgent"
+        - name: page
+          in: query
+          required: false
+          description: 页码（从 1 开始）
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          required: false
+          description: 每页数量
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: PR 列表（数组，可能为空）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PullRequest'
+        '401':
+          description: 未授权（token 无效或缺失）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+        '404':
+          description: 仓库不存在或无访问权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "仓库不存在"
+    post:
+      summary: 创建 Pull Request
+      description: 在指定仓库中创建一个新的 Pull Request
+      operationId: createPullRequest
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（企业、组织或个人的地址 path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - head
+                - base
+              properties:
+                title:
+                  type: string
+                  description: PR 标题
+                  example: "Add new feature"
+                  minLength: 1
+                  maxLength: 255
+                head:
+                  type: string
+                  description: 源分支名称，格式：namespace:branch_name 或 branch_name
+                  example: "feature/new-feature"
+                base:
+                  type: string
+                  description: 目标分支名称
+                  example: "main"
+                body:
+                  type: string
+                  description: PR 描述内容
+                  example: "This PR adds a new feature that..."
+                draft:
+                  type: boolean
+                  description: 是否创建为草稿 PR
+                  default: false
+                  example: false
+                labels:
+                  type: string
+                  description: 标签列表，逗号分隔
+                  example: "bug,urgent"
+                milestone_number:
+                  type: integer
+                  description: 里程碑编号
+                  example: 1
+                assignees:
+                  type: string
+                  description: 审阅者（assignees），逗号分隔的用户名
+                  example: "user1,user2"
+                testers:
+                  type: string
+                  description: 测试者，逗号分隔的用户名
+                  example: "tester1,tester2"
+      responses:
+        '201':
+          description: PR 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequest'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "参数错误：title 不能为空"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "您没有权限在该仓库创建 PR"
+        '404':
+          description: 仓库不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "仓库不存在"
+        '422':
+          description: PR 已存在或分支冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "已存在相同源分支和目标分支的Pull Request"
+
+  /repos/{owner}/{repo}/pulls/{number}:
+    get:
+      summary: 获取单个 Pull Request 详情
+      description: 按编号获取指定仓库的 Pull Request 详情，供 `gitee pr checkout` 解析源分支并检出到本地。
+      operationId: getPullRequest
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "owner"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "repo"
+        - name: number
+          in: path
+          required: true
+          description: Pull Request 编号
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequest'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+        '404':
+          description: 仓库或 PR 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Not Found"
+
+  /repos/{owner}/{repo}/pulls/{number}/comments:
+    get:
+      summary: 获取 Pull Request 评论列表
+      description: 获取指定 PR 的所有评论，供 `gitee pr view --comments` 显示。
+      operationId: listPullRequestComments
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "owner"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "repo"
+        - name: number
+          in: path
+          required: true
+          description: Pull Request 编号
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+        '404':
+          description: 仓库或 PR 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Not Found"
+
+components:
+  securitySchemes:
+    access_token:
+      type: apiKey
+      in: query
+      name: access_token
+      description: Gitee Personal Access Token
+
+  schemas:
+    PullRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: PR 的唯一标识 ID
+          example: 123456
+        number:
+          type: integer
+          description: PR 编号
+          example: 456
+        state:
+          type: string
+          description: PR 状态
+          enum: [open, closed, merged, progressing]
+          example: "open"
+        html_url:
+          type: string
+          description: PR 的网页 URL
+          example: "https://gitee.com/pipreola/gitee-cli/pulls/456"
+        title:
+          type: string
+          description: PR 标题
+          example: "Add new feature"
+        body:
+          type: string
+          description: PR 描述
+          example: "This PR adds a new feature that..."
+        user:
+          $ref: '#/components/schemas/User'
+        head:
+          $ref: '#/components/schemas/Branch'
+        base:
+          $ref: '#/components/schemas/Branch'
+        mergeable:
+          type: boolean
+          description: 是否可合并
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+          example: "2024-01-15T10:30:00+08:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新时间
+          example: "2024-01-15T11:00:00+08:00"
+        merged_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 合并时间（未合并时为 null）
+          example: null
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 关闭时间（未关闭时为 null）
+          example: null
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 用户 ID
+          example: 1
+        login:
+          type: string
+          description: 用户登录名
+          example: "pipreola"
+        name:
+          type: string
+          description: 用户昵称
+          example: "Pipreola"
+        avatar_url:
+          type: string
+          description: 用户头像 URL
+          example: "https://gitee.com/assets/no_portrait.png"
+        html_url:
+          type: string
+          description: 用户主页 URL
+          example: "https://gitee.com/pipreola"
+
+    Branch:
+      type: object
+      properties:
+        label:
+          type: string
+          description: 分支标签（命名空间:分支名）
+          example: "pipreola:feature/new-feature"
+        ref:
+          type: string
+          description: 分支名
+          example: "feature/new-feature"
+        sha:
+          type: string
+          description: 分支最新提交的 SHA 值
+          example: "abc123def456"
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: 错误信息
+          example: "参数错误"
+        error:
+          type: string
+          description: 错误代码或详细信息
+          example: "invalid_parameter"
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 评论 ID
+          example: 789
+        body:
+          type: string
+          description: 评论内容
+          example: "LGTM，建议合并"
+        user:
+          $ref: '#/components/schemas/User'
+        created_at:
+          type: string
+          format: date-time
+          description: 评论创建时间
+          example: "2024-01-15T12:00:00+08:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: 评论更新时间
+          example: "2024-01-15T12:05:00+08:00"
