@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -761,5 +763,402 @@ func TestMergePullRequestPathEscaping(t *testing.T) {
 	client := NewClient(srv.URL, "tok")
 	if err := client.MergePullRequest(context.Background(), "my/org", "my repo", 9, &MergePullRequestInput{MergeMethod: "merge"}); err != nil {
 		t.Fatalf("MergePullRequest 返回错误: %v", err)
+	}
+}
+
+// TestCreatePullRequestCommentSuccess 验证创建 PR 评论的请求格式与响应解析。
+func TestCreatePullRequestCommentSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("HTTP 方法 = %s, 期望 POST", r.Method)
+		}
+		if got := r.URL.Path; got != "/repos/owner/repo/pulls/123/comments" {
+			t.Errorf("请求路径 = %q, 期望 /repos/owner/repo/pulls/123/comments", got)
+		}
+		if got := r.URL.Query().Get("access_token"); got != "test_token" {
+			t.Errorf("access_token = %q, 期望 test_token", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q, 期望 application/json", got)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatalf("请求体不是合法 JSON: %v", err)
+		}
+		if payload["body"] != "LGTM" {
+			t.Errorf("请求体 body = %v, 期望 LGTM", payload["body"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{
+			"id": 789,
+			"body": "LGTM",
+			"html_url": "https://gitee.com/owner/repo/pulls/123#note_789",
+			"user": {"id":1,"login":"testuser"},
+			"created_at": "2024-01-01T00:00:00+08:00",
+			"updated_at": "2024-01-01T00:00:00+08:00"
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "test_token")
+	comment, err := client.CreatePullRequestComment(context.Background(), "owner", "repo", 123, &CreatePullRequestCommentInput{Body: "LGTM"})
+	if err != nil {
+		t.Fatalf("CreatePullRequestComment 返回错误: %v", err)
+	}
+	if comment.ID != 789 {
+		t.Errorf("评论 ID = %d, 期望 789", comment.ID)
+	}
+	if comment.HTMLURL != "https://gitee.com/owner/repo/pulls/123#note_789" {
+		t.Errorf("评论 URL = %q, 不符合预期", comment.HTMLURL)
+	}
+}
+
+// TestCreatePullRequestCommentValidation 验证 PR 评论的本地参数校验。
+func TestCreatePullRequestCommentValidation(t *testing.T) {
+	client := NewClient("https://example.com", "tok")
+	ctx := context.Background()
+
+	if _, err := client.CreatePullRequestComment(ctx, "o", "r", 1, nil); err == nil {
+		t.Error("期望 input 为 nil 时报错")
+	}
+	if _, err := client.CreatePullRequestComment(ctx, "", "r", 1, &CreatePullRequestCommentInput{Body: "x"}); err == nil {
+		t.Error("期望 owner 为空时报错")
+	}
+	if _, err := client.CreatePullRequestComment(ctx, "o", "r", 0, &CreatePullRequestCommentInput{Body: "x"}); err == nil {
+		t.Error("期望编号为 0 时报错")
+	}
+	if _, err := client.CreatePullRequestComment(ctx, "o", "r", 1, &CreatePullRequestCommentInput{Body: ""}); err == nil {
+		t.Error("期望评论内容为空时报错")
+	}
+}
+
+// TestCreatePullRequestCommentAPIError 验证 API 返回非 2xx 时的错误处理。
+func TestCreatePullRequestCommentAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	_, err := client.CreatePullRequestComment(context.Background(), "o", "r", 1, &CreatePullRequestCommentInput{Body: "x"})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("错误类型 = %T, 期望 *APIError", err)
+	}
+	if apiErr.StatusCode != http.StatusNotFound {
+		t.Errorf("StatusCode = %d, 期望 404", apiErr.StatusCode)
+	}
+}
+
+// TestCreateIssueCommentSuccess 验证创建 Issue 评论的请求格式与响应解析。
+func TestCreateIssueCommentSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("HTTP 方法 = %s, 期望 POST", r.Method)
+		}
+		if got := r.URL.Path; got != "/repos/owner/repo/issues/I1ABC/comments" {
+			t.Errorf("请求路径 = %q, 期望 /repos/owner/repo/issues/I1ABC/comments", got)
+		}
+		if got := r.URL.Query().Get("access_token"); got != "test_token" {
+			t.Errorf("access_token = %q, 期望 test_token", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q, 期望 application/json", got)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatalf("请求体不是合法 JSON: %v", err)
+		}
+		if payload["body"] != "已修复" {
+			t.Errorf("请求体 body = %v, 期望 已修复", payload["body"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{
+			"id": 10003,
+			"body": "已修复",
+			"html_url": "https://gitee.com/owner/repo/issues/I1ABC#note_10003",
+			"user": {"id":2,"login":"bob"},
+			"created_at": "2024-01-06T10:00:00+08:00",
+			"updated_at": "2024-01-06T10:00:00+08:00"
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "test_token")
+	comment, err := client.CreateIssueComment(context.Background(), "owner", "repo", "I1ABC", &CreateIssueCommentInput{Body: "已修复"})
+	if err != nil {
+		t.Fatalf("CreateIssueComment 返回错误: %v", err)
+	}
+	if comment.ID != 10003 {
+		t.Errorf("评论 ID = %d, 期望 10003", comment.ID)
+	}
+	if comment.HTMLURL != "https://gitee.com/owner/repo/issues/I1ABC#note_10003" {
+		t.Errorf("评论 URL = %q, 不符合预期", comment.HTMLURL)
+	}
+}
+
+// TestCreateIssueCommentValidation 验证 Issue 评论的本地参数校验。
+func TestCreateIssueCommentValidation(t *testing.T) {
+	client := NewClient("https://example.com", "tok")
+	ctx := context.Background()
+
+	if _, err := client.CreateIssueComment(ctx, "o", "r", "I1", nil); err == nil {
+		t.Error("期望 input 为 nil 时报错")
+	}
+	if _, err := client.CreateIssueComment(ctx, "", "r", "I1", &CreateIssueCommentInput{Body: "x"}); err == nil {
+		t.Error("期望 owner 为空时报错")
+	}
+	if _, err := client.CreateIssueComment(ctx, "o", "r", "", &CreateIssueCommentInput{Body: "x"}); err == nil {
+		t.Error("期望编号为空时报错")
+	}
+	if _, err := client.CreateIssueComment(ctx, "o", "r", "I1", &CreateIssueCommentInput{Body: ""}); err == nil {
+		t.Error("期望评论内容为空时报错")
+	}
+}
+
+// TestCreateIssueSuccess 验证创建 Issue 的成功路径。
+func TestCreateIssueSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/issues" {
+			t.Errorf("路径 = %q, 期望 /repos/owner/repo/issues", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("方法 = %q, 期望 POST", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q, 期望 application/json", got)
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":123,"number":"I1ABC","state":"open","title":"测试Issue","html_url":"https://gitee.com/owner/repo/issues/I1ABC"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "token")
+	input := &CreateIssueInput{
+		Title:     "测试Issue",
+		Body:      "这是描述",
+		Labels:    "bug,urgent",
+		Assignees: "user1",
+	}
+
+	issue, err := client.CreateIssue(context.Background(), "owner", "repo", input)
+	if err != nil {
+		t.Fatalf("CreateIssue 返回错误: %v", err)
+	}
+	if issue.Number != "I1ABC" || issue.Title != "测试Issue" {
+		t.Errorf("issue = %+v, 不符合预期", issue)
+	}
+}
+
+// TestCreateIssueValidation 验证 CreateIssue 的输入参数校验。
+func TestCreateIssueValidation(t *testing.T) {
+	client := NewClient("https://example.com", "tok")
+	ctx := context.Background()
+
+	tests := []struct {
+		name   string
+		owner  string
+		repo   string
+		input  *CreateIssueInput
+		errMsg string
+	}{
+		{
+			name:   "input 为 nil",
+			owner:  "o",
+			repo:   "r",
+			input:  nil,
+			errMsg: "input 不能为空",
+		},
+		{
+			name:   "owner 为空",
+			owner:  "",
+			repo:   "r",
+			input:  &CreateIssueInput{Title: "test"},
+			errMsg: "owner 和 repo 不能为空",
+		},
+		{
+			name:   "repo 为空",
+			owner:  "o",
+			repo:   "",
+			input:  &CreateIssueInput{Title: "test"},
+			errMsg: "owner 和 repo 不能为空",
+		},
+		{
+			name:   "title 为空",
+			owner:  "o",
+			repo:   "r",
+			input:  &CreateIssueInput{Title: ""},
+			errMsg: "title 是必填参数",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.CreateIssue(ctx, tt.owner, tt.repo, tt.input)
+			if err == nil {
+				t.Fatal("期望返回错误，实际为 nil")
+			}
+			if !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("错误信息 = %q, 期望包含 %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestCreateIssueBadRequest 验证 400 错误响应的处理。
+func TestCreateIssueBadRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"title 不能为空"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "token")
+	input := &CreateIssueInput{Title: "test"}
+
+	_, err := client.CreateIssue(context.Background(), "owner", "repo", input)
+	if err == nil {
+		t.Fatal("期望返回错误，实际为 nil")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("错误类型 = %T, 期望 *APIError", err)
+	}
+	if apiErr.StatusCode != http.StatusBadRequest {
+		t.Errorf("StatusCode = %d, 期望 400", apiErr.StatusCode)
+	}
+	if !strings.Contains(apiErr.Message, "title 不能为空") {
+		t.Errorf("Message = %q, 期望包含 'title 不能为空'", apiErr.Message)
+	}
+}
+
+// TestUpdatePullRequestStateSuccess 验证 PR 状态更新成功。
+func TestUpdatePullRequestStateSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("HTTP 方法 = %s, 期望 PATCH", r.Method)
+		}
+		if got := r.URL.Path; got != "/repos/owner/repo/pulls/123" {
+			t.Errorf("请求路径 = %q, 期望 /repos/owner/repo/pulls/123", got)
+		}
+		if got := r.URL.Query().Get("access_token"); got != "tok" {
+			t.Errorf("access_token = %q, 期望 tok", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": 1,
+			"number": 123,
+			"state": "closed",
+			"html_url": "https://gitee.com/owner/repo/pulls/123",
+			"title": "Test PR",
+			"user": {"id":1,"login":"testuser"},
+			"head": {"label":"feature","ref":"feature","sha":"abc123"},
+			"base": {"label":"main","ref":"main","sha":"def456"}
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	pr, err := client.UpdatePullRequestState(context.Background(), "owner", "repo", 123, "closed")
+	if err != nil {
+		t.Fatalf("UpdatePullRequestState 返回错误: %v", err)
+	}
+	if pr.Number != 123 {
+		t.Errorf("PR Number = %d, 期望 123", pr.Number)
+	}
+	if pr.State != "closed" {
+		t.Errorf("PR State = %q, 期望 closed", pr.State)
+	}
+}
+
+// TestUpdatePullRequestStateValidation 验证参数校验。
+func TestUpdatePullRequestStateValidation(t *testing.T) {
+	client := NewClient("", "tok")
+	ctx := context.Background()
+
+	if _, err := client.UpdatePullRequestState(ctx, "", "repo", 1, "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 owner 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdatePullRequestState(ctx, "owner", "", 1, "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 repo 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdatePullRequestState(ctx, "owner", "repo", 0, "closed"); err == nil ||
+		!strings.Contains(err.Error(), "PR 编号必须大于 0") {
+		t.Errorf("期望编号校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdatePullRequestState(ctx, "owner", "repo", 1, "invalid"); err == nil ||
+		!strings.Contains(err.Error(), "state 必须为 open 或 closed") {
+		t.Errorf("期望 state 校验错误，实际: %v", err)
+	}
+}
+
+// TestUpdateIssueStateSuccess 验证 Issue 状态更新成功。
+func TestUpdateIssueStateSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("HTTP 方法 = %s, 期望 PATCH", r.Method)
+		}
+		if got := r.URL.Path; got != "/repos/owner/repo/issues/I123" {
+			t.Errorf("请求路径 = %q, 期望 /repos/owner/repo/issues/I123", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": 1,
+			"number": "I123",
+			"state": "closed",
+			"html_url": "https://gitee.com/owner/repo/issues/I123",
+			"title": "Test Issue",
+			"body": "Test body",
+			"user": {"id":1,"login":"testuser"},
+			"created_at": "2024-01-01T10:00:00+08:00",
+			"updated_at": "2024-01-02T10:00:00+08:00"
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	issue, err := client.UpdateIssueState(context.Background(), "owner", "repo", "I123", "closed")
+	if err != nil {
+		t.Fatalf("UpdateIssueState 返回错误: %v", err)
+	}
+	if issue.Number != "I123" {
+		t.Errorf("Issue Number = %q, 期望 I123", issue.Number)
+	}
+	if issue.State != "closed" {
+		t.Errorf("Issue State = %q, 期望 closed", issue.State)
+	}
+}
+
+// TestUpdateIssueStateValidation 验证参数校验。
+func TestUpdateIssueStateValidation(t *testing.T) {
+	client := NewClient("", "tok")
+	ctx := context.Background()
+
+	if _, err := client.UpdateIssueState(ctx, "", "repo", "I1", "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 owner 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdateIssueState(ctx, "owner", "", "I1", "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 repo 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdateIssueState(ctx, "owner", "repo", "", "closed"); err == nil ||
+		!strings.Contains(err.Error(), "Issue 编号不能为空") {
+		t.Errorf("期望编号校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdateIssueState(ctx, "owner", "repo", "I1", "invalid"); err == nil ||
+		!strings.Contains(err.Error(), "state 必须为 open 或 closed") {
+		t.Errorf("期望 state 校验错误，实际: %v", err)
 	}
 }

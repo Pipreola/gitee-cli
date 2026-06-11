@@ -164,6 +164,125 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    post:
+      summary: 创建 Issue
+      description: 在指定仓库中创建一个新的 Issue。
+      operationId: createIssue
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  description: Issue 标题（必填）
+                  example: "修复登录页面样式问题"
+                body:
+                  type: string
+                  description: Issue 描述内容（可选，支持 Markdown 格式）
+                  example: "登录页面在移动端显示异常，需要调整响应式布局。"
+                labels:
+                  type: string
+                  description: 标签列表（可选），逗号分隔
+                  example: "bug,urgent"
+                assignees:
+                  type: string
+                  description: 指派人列表（可选），逗号分隔的用户名
+                  example: "bob,alice"
+                milestone:
+                  type: integer
+                  description: 里程碑编号（可选）
+                  example: 1
+      responses:
+        '201':
+          description: Issue 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+              example:
+                id: 123456
+                number: "I1ABC"
+                state: "open"
+                title: "修复登录页面样式问题"
+                body: "登录页面在移动端显示异常，需要调整响应式布局。"
+                html_url: "https://gitee.com/pipreola/gitee-cli/issues/I1ABC"
+                user:
+                  id: 1001
+                  login: "alice"
+                  name: "Alice"
+                labels:
+                  - id: 1
+                    name: "bug"
+                    color: "fc2929"
+                  - id: 2
+                    name: "urgent"
+                    color: "eb6420"
+                assignee:
+                  id: 1002
+                  login: "bob"
+                  name: "Bob"
+                milestone:
+                  id: 10
+                  title: "v1.0"
+                  number: 1
+                comments: 0
+                created_at: "2024-01-01T10:00:00+08:00"
+                updated_at: "2024-01-01T10:00:00+08:00"
+        '400':
+          description: 请求参数错误（如缺少必填字段 title）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未授权，access_token 无效或缺失
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足，无权在此仓库创建 Issue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 仓库不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /repos/{owner}/{repo}/issues/{number}:
     get:
       summary: 查看 Issue 详情
@@ -257,6 +376,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: 更新 Issue 状态
+      description: 更新指定 Issue 的状态（关闭或重新打开），供 `gitee issue close` 和 `gitee issue reopen` 使用。
+      operationId: updateIssueState
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: number
+          in: path
+          required: true
+          description: Issue 编号
+          schema:
+            type: string
+          example: "I1ABC"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - state
+                - repo
+              properties:
+                state:
+                  type: string
+                  description: Issue 状态
+                  enum: [open, closed]
+                  example: "closed"
+                repo:
+                  type: string
+                  description: 仓库路径（Gitee Issue PATCH 接口要求）
+                  example: "gitee-cli"
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "参数错误：state 必须为 open 或 closed"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "401 Unauthorized"
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "您没有权限更新此 Issue"
+        '404':
+          description: Issue 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "Not Found"
 
   /repos/{owner}/{repo}/issues/{number}/comments:
     get:
@@ -321,6 +534,94 @@ paths:
                     name: "Bob"
                   created_at: "2024-01-03T14:30:00+08:00"
                   updated_at: "2024-01-03T14:30:00+08:00"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Issue 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: 创建 Issue 评论
+      description: 为指定 Issue 添加评论，供 `gitee issue comment` 使用。
+      operationId: createIssueComment
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: number
+          in: path
+          required: true
+          description: Issue 编号
+          schema:
+            type: string
+          example: "I1ABC"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  description: 评论内容
+                  example: "已经在本地复现了，正在修复中。"
+                  minLength: 1
+      responses:
+        '201':
+          description: 评论创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+              example:
+                id: 10003
+                body: "已经在本地复现了，正在修复中。"
+                user:
+                  id: 1002
+                  login: "bob"
+                  name: "Bob"
+                  avatar_url: "https://gitee.com/assets/no_portrait.png"
+                  html_url: "https://gitee.com/bob"
+                created_at: "2024-01-06T10:00:00+08:00"
+                updated_at: "2024-01-06T10:00:00+08:00"
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "评论内容不能为空"
         '401':
           description: 未授权
           content:
@@ -476,6 +777,11 @@ components:
           type: string
           description: 评论内容（Markdown 格式）
           example: "我来看看这个问题。"
+        html_url:
+          type: string
+          format: uri
+          description: 评论的网页 URL
+          example: "https://gitee.com/owner/repo/issues/I1ABC#note_10001"
         user:
           $ref: '#/components/schemas/User'
           description: 评论者信息
