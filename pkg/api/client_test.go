@@ -886,3 +886,127 @@ func TestCreateIssueBadRequest(t *testing.T) {
 		t.Errorf("Message = %q, 期望包含 'title 不能为空'", apiErr.Message)
 	}
 }
+
+// TestUpdatePullRequestStateSuccess 验证 PR 状态更新成功。
+func TestUpdatePullRequestStateSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("HTTP 方法 = %s, 期望 PATCH", r.Method)
+		}
+		if got := r.URL.Path; got != "/repos/owner/repo/pulls/123" {
+			t.Errorf("请求路径 = %q, 期望 /repos/owner/repo/pulls/123", got)
+		}
+		if got := r.URL.Query().Get("access_token"); got != "tok" {
+			t.Errorf("access_token = %q, 期望 tok", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": 1,
+			"number": 123,
+			"state": "closed",
+			"html_url": "https://gitee.com/owner/repo/pulls/123",
+			"title": "Test PR",
+			"user": {"id":1,"login":"testuser"},
+			"head": {"label":"feature","ref":"feature","sha":"abc123"},
+			"base": {"label":"main","ref":"main","sha":"def456"}
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	pr, err := client.UpdatePullRequestState(context.Background(), "owner", "repo", 123, "closed")
+	if err != nil {
+		t.Fatalf("UpdatePullRequestState 返回错误: %v", err)
+	}
+	if pr.Number != 123 {
+		t.Errorf("PR Number = %d, 期望 123", pr.Number)
+	}
+	if pr.State != "closed" {
+		t.Errorf("PR State = %q, 期望 closed", pr.State)
+	}
+}
+
+// TestUpdatePullRequestStateValidation 验证参数校验。
+func TestUpdatePullRequestStateValidation(t *testing.T) {
+	client := NewClient("", "tok")
+	ctx := context.Background()
+
+	if _, err := client.UpdatePullRequestState(ctx, "", "repo", 1, "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 owner 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdatePullRequestState(ctx, "owner", "", 1, "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 repo 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdatePullRequestState(ctx, "owner", "repo", 0, "closed"); err == nil ||
+		!strings.Contains(err.Error(), "PR 编号必须大于 0") {
+		t.Errorf("期望编号校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdatePullRequestState(ctx, "owner", "repo", 1, "invalid"); err == nil ||
+		!strings.Contains(err.Error(), "state 必须为 open 或 closed") {
+		t.Errorf("期望 state 校验错误，实际: %v", err)
+	}
+}
+
+// TestUpdateIssueStateSuccess 验证 Issue 状态更新成功。
+func TestUpdateIssueStateSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("HTTP 方法 = %s, 期望 PATCH", r.Method)
+		}
+		if got := r.URL.Path; got != "/repos/owner/repo/issues/I123" {
+			t.Errorf("请求路径 = %q, 期望 /repos/owner/repo/issues/I123", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": 1,
+			"number": "I123",
+			"state": "closed",
+			"html_url": "https://gitee.com/owner/repo/issues/I123",
+			"title": "Test Issue",
+			"body": "Test body",
+			"user": {"id":1,"login":"testuser"},
+			"created_at": "2024-01-01T10:00:00+08:00",
+			"updated_at": "2024-01-02T10:00:00+08:00"
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	issue, err := client.UpdateIssueState(context.Background(), "owner", "repo", "I123", "closed")
+	if err != nil {
+		t.Fatalf("UpdateIssueState 返回错误: %v", err)
+	}
+	if issue.Number != "I123" {
+		t.Errorf("Issue Number = %q, 期望 I123", issue.Number)
+	}
+	if issue.State != "closed" {
+		t.Errorf("Issue State = %q, 期望 closed", issue.State)
+	}
+}
+
+// TestUpdateIssueStateValidation 验证参数校验。
+func TestUpdateIssueStateValidation(t *testing.T) {
+	client := NewClient("", "tok")
+	ctx := context.Background()
+
+	if _, err := client.UpdateIssueState(ctx, "", "repo", "I1", "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 owner 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdateIssueState(ctx, "owner", "", "I1", "closed"); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 repo 校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdateIssueState(ctx, "owner", "repo", "", "closed"); err == nil ||
+		!strings.Contains(err.Error(), "Issue 编号不能为空") {
+		t.Errorf("期望编号校验错误，实际: %v", err)
+	}
+	if _, err := client.UpdateIssueState(ctx, "owner", "repo", "I1", "invalid"); err == nil ||
+		!strings.Contains(err.Error(), "state 必须为 open 或 closed") {
+		t.Errorf("期望 state 校验错误，实际: %v", err)
+	}
+}
