@@ -711,9 +711,10 @@ func runPRMerge(ctx context.Context, opts prMergeOptions, env prMergeEnv) error 
 	}
 
 	// 7. 构造合并请求
+	// --message 对应 Gitee v5 API 的 description 字段（formData）。
 	input := &api.MergePullRequestInput{
 		MergeMethod:       opts.method,
-		Message:           opts.message,
+		Description:       opts.message,
 		PruneSourceBranch: opts.deleteBranch,
 	}
 
