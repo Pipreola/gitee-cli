@@ -668,6 +668,55 @@ func (c *Client) CreateIssue(ctx context.Context, owner, repo string, input *Cre
 	return &issue, nil
 }
 
+// GetPullRequestDiff 调用 GET /repos/:owner/:repo/pulls/:number.diff 获取 PR 的 unified diff 文本。
+// 返回原始 diff 字符串（非 JSON），调用方可直接输出或解析文件名。
+func (c *Client) GetPullRequestDiff(ctx context.Context, owner, repo string, number int64) (string, error) {
+	if owner == "" || repo == "" {
+		return "", fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return "", fmt.Errorf("PR 编号必须大于 0")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d.diff", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(body),
+		}
+	}
+
+	return string(body), nil
+}
+
 // CIStatus 表示 Gitee commit 的 CI 状态（来自 GET /repos/:owner/:repo/commits/:ref/statuses）。
 // 参考: https://gitee.com/api/v5/swagger#/getV5ReposOwnerRepoCommitsRefStatuses
 type CIStatus struct {
