@@ -83,6 +83,11 @@ func (e *APIError) Error() string {
 
 // do 执行一次请求，处理认证与错误，并将成功响应体反序列化到 out（out 可为 nil）。
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, out interface{}) error {
+	return c.doWithBody(ctx, method, path, query, nil, out)
+}
+
+// doWithBody 执行一次带 body 的请求（用于 POST / PATCH），处理认证与错误。
+func (c *Client) doWithBody(ctx context.Context, method, path string, query url.Values, body io.Reader, out interface{}) error {
 	if query == nil {
 		query = url.Values{}
 	}
@@ -96,11 +101,14 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		fullURL += "?" + encoded
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, fullURL, nil)
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
 	if err != nil {
 		return fmt.Errorf("构造请求失败: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -108,7 +116,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("读取响应失败: %w", err)
 	}
@@ -116,12 +124,12 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &APIError{
 			StatusCode: resp.StatusCode,
-			Message:    parseErrorMessage(body),
+			Message:    parseErrorMessage(respBody),
 		}
 	}
 
-	if out != nil && len(body) > 0 {
-		if err := json.Unmarshal(body, out); err != nil {
+	if out != nil && len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, out); err != nil {
 			return fmt.Errorf("解析响应失败: %w", err)
 		}
 	}
@@ -309,45 +317,9 @@ func (c *Client) CreatePullRequest(ctx context.Context, owner, repo string, inpu
 		return nil, fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
-	// 构造请求
-	query := url.Values{}
-	if c.token != "" {
-		query.Set("access_token", c.token)
-	}
-
-	fullURL := c.baseURL + path
-	if encoded := query.Encode(); encoded != "" {
-		fullURL += "?" + encoded
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, fmt.Errorf("构造请求失败: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("发送请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &APIError{
-			StatusCode: resp.StatusCode,
-			Message:    parseErrorMessage(respBody),
-		}
-	}
-
 	var pr PullRequest
-	if err := json.Unmarshal(respBody, &pr); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	if err := c.doWithBody(ctx, http.MethodPost, path, nil, strings.NewReader(string(body)), &pr); err != nil {
+		return nil, err
 	}
 	return &pr, nil
 }
@@ -364,6 +336,33 @@ func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, number 
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", escapePathSegment(owner), escapePathSegment(repo), number)
 	var pr PullRequest
 	if err := c.do(ctx, http.MethodGet, path, nil, &pr); err != nil {
+		return nil, err
+	}
+	return &pr, nil
+}
+
+// UpdatePullRequestState 调用 PATCH /repos/:owner/:repo/pulls/:number 更新 PR 状态。
+// state 可以是 "open" 或 "closed"。
+func (c *Client) UpdatePullRequestState(ctx context.Context, owner, repo string, number int64, state string) (*PullRequest, error) {
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return nil, fmt.Errorf("PR 编号必须大于 0")
+	}
+	if state != "open" && state != "closed" {
+		return nil, fmt.Errorf("state 必须为 open 或 closed")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	body, err := json.Marshal(map[string]string{"state": state})
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	var pr PullRequest
+	if err := c.doWithBody(ctx, http.MethodPatch, path, nil, strings.NewReader(string(body)), &pr); err != nil {
 		return nil, err
 	}
 	return &pr, nil
@@ -543,6 +542,33 @@ func (c *Client) GetIssue(ctx context.Context, owner, repo, number string) (*Iss
 	path := fmt.Sprintf("/repos/%s/%s/issues/%s", escapePathSegment(owner), escapePathSegment(repo), escapePathSegment(number))
 	var issue Issue
 	if err := c.do(ctx, http.MethodGet, path, nil, &issue); err != nil {
+		return nil, err
+	}
+	return &issue, nil
+}
+
+// UpdateIssueState 调用 PATCH /repos/:owner/:repo/issues/:number 更新 Issue 状态。
+// state 可以是 "open" 或 "closed"。
+func (c *Client) UpdateIssueState(ctx context.Context, owner, repo, number, state string) (*Issue, error) {
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number == "" {
+		return nil, fmt.Errorf("Issue 编号不能为空")
+	}
+	if state != "open" && state != "closed" {
+		return nil, fmt.Errorf("state 必须为 open 或 closed")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/issues/%s", escapePathSegment(owner), escapePathSegment(repo), escapePathSegment(number))
+
+	body, err := json.Marshal(map[string]string{"state": state, "repo": repo})
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	var issue Issue
+	if err := c.doWithBody(ctx, http.MethodPatch, path, nil, strings.NewReader(string(body)), &issue); err != nil {
 		return nil, err
 	}
 	return &issue, nil
