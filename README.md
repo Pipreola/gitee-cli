@@ -1,56 +1,101 @@
 # gitee-cli
 
-一个用于与 [Gitee（码云）](https://gitee.com) 交互的命令行工具，基于 [Gitee OpenAPI v5](https://gitee.com/api/v5/swagger) 实现。
+**English** | [简体中文](README.zh-CN.md)
 
-## 状态
+A command-line tool for interacting with [Gitee](https://gitee.com), built on the [Gitee OpenAPI v5](https://gitee.com/api/v5/swagger).
 
-- ✅ 阶段一：项目基础架构搭建（已完成）
-- ✅ 阶段二：认证模块实现（已完成）
-- ✅ PR 创建功能（已完成）
-- ✅ PR 列表功能（已完成）
+Manage authentication, pull requests, issues, repositories, and CI status from your terminal — with an output style consistent with `gh` / `glab`.
 
-当前提供项目骨架、配置管理、API 客户端封装、完整的认证功能、PR 创建与查询能力。
+## Status
 
-## 功能特性
+- ✅ Phase 1 — Project scaffolding (done)
+- ✅ Phase 1 — Authentication module (done)
+- ✅ PR create / list / view / checkout (done)
+- ✅ Issue list / view (done)
+- ✅ CI status (done)
 
-- ✅ **认证管理**：支持交互式登录、状态查询、登出
-- ✅ **PR 创建**：支持交互式和参数化创建 Pull Request
-- ✅ **PR 列表**：支持按状态、作者、标签、分支过滤，输出格式与 gh/glab 一致
+The current release ships the project skeleton, configuration management, an API client wrapper, full authentication, and PR / Issue / Repo / CI capabilities.
 
-## 环境要求
+## Features
 
-- Go 1.19+
-- Git（用于获取仓库信息和分支操作）
+The first release covers the following commands:
 
-## 安装
+| Command | Description |
+| --- | --- |
+| `gitee auth login` | Interactive or token-based login |
+| `gitee auth status` | Show the current login state |
+| `gitee auth logout` | Log out and clear local credentials |
+| `gitee repo view` | View repository information |
+| `gitee pr create` | Create a Pull Request (interactive or flags) |
+| `gitee pr list` | List PRs with state / author / label / branch filters |
+| `gitee pr view` | View Pull Request details |
+| `gitee pr checkout` | Check out a PR into a local branch |
+| `gitee issue list` | List issues with filters |
+| `gitee issue view` | View issue details |
+| `gitee ci status` | View CI/CD build status for the repository |
 
-### 一键安装脚本（推荐）
+Output matches the conventions of `gh` / `glab`, and most read commands support `--json` for scripting.
 
-**Linux / macOS / Git Bash / WSL：**
+## Requirements
+
+- Go 1.25+ (only required when building from source or using `go install`)
+- Git (used for repository detection and branch operations)
+
+## Quick Start
+
+```bash
+# 1. Install (macOS / Linux)
+curl -fsSL https://raw.githubusercontent.com/Pipreola/gitee-cli/main/install.sh | bash
+
+# 2. Log in (generate a token at https://gitee.com/profile/personal_access_tokens)
+gitee auth login
+
+# 3. Verify
+gitee auth status
+
+# 4. Create a PR from the current branch
+gitee pr create --title "Add new feature" --body "This PR adds ..."
+```
+
+## Installation
+
+### One-line install script (recommended)
+
+**macOS / Linux / Git Bash / WSL:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Pipreola/gitee-cli/main/install.sh | bash
 ```
 
-**Windows PowerShell：**
+**Windows PowerShell:**
 
 ```powershell
 irm https://raw.githubusercontent.com/Pipreola/gitee-cli/main/install.ps1 | iex
 ```
 
-PowerShell 脚本会自动检测架构（x64/arm64），从 GitHub Releases 下载对应版本的 `gitee.exe`，
-安装到 `%LOCALAPPDATA%\Programs\gitee` 并加入用户 PATH。安装后重新打开终端即可使用 `gitee`。
+The PowerShell script auto-detects the architecture (x64 / arm64), downloads the matching `gitee.exe` from GitHub Releases, installs it to `%LOCALAPPDATA%\Programs\gitee`, and adds it to the user `PATH`. Reopen your terminal afterwards to use `gitee`.
 
-> 如遇执行策略限制，可在当前会话临时放开：
+> If you hit an execution-policy restriction, relax it for the current session only:
 > `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
 
-### 使用 go install
+### Manual download
+
+1. Download the archive for your platform from the [latest release](https://github.com/Pipreola/gitee-cli/releases/latest):
+   - Linux / macOS: `gitee_<version>_<OS>_<arch>.tar.gz`
+   - Windows: `gitee_<version>_Windows_<arch>.zip`
+2. Extract the archive to obtain the `gitee` (or `gitee.exe`) binary.
+3. Move it to a directory on your `PATH`:
+   - macOS / Linux: `sudo mv gitee /usr/local/bin/`
+   - Windows: place `gitee.exe` in a folder such as `%LOCALAPPDATA%\Programs\gitee` and add that folder to your user `PATH`.
+4. Verify: `gitee version`
+
+### Using `go install`
 
 ```bash
 go install github.com/Pipreola/gitee-cli@latest
 ```
 
-### 从源码构建
+### Build from source
 
 ```bash
 git clone https://github.com/Pipreola/gitee-cli.git
@@ -58,152 +103,108 @@ cd gitee-cli
 go build -o gitee .
 ```
 
-## 目录结构
+## Project Layout
 
 ```
 .
-├── main.go              # 程序入口
-├── cmd/                 # Cobra 命令树（root / version / auth / pr）
+├── main.go              # Program entry point
+├── cmd/                 # Cobra command tree (root / version / auth / pr / issue / repo / ci)
 ├── pkg/
-│   ├── api/             # Gitee OpenAPI v5 客户端（认证、PR、错误处理）
-│   ├── config/          # 配置文件读写（~/.config/gitee-cli/config.yaml）
-│   └── auth/            # 认证逻辑，桥接配置与 API
+│   ├── api/             # Gitee OpenAPI v5 client (auth, PR, issue, repo, CI, error handling)
+│   ├── config/          # Config read/write (~/.config/gitee-cli/config.yaml)
+│   └── auth/            # Authentication logic bridging config and API
 ├── internal/
-│   └── version/         # 版本信息
-└── docs/api/            # OpenAPI 接口文档
+│   └── version/         # Version metadata
+└── docs/api/            # OpenAPI specs
 ```
 
-## 使用
+## Usage
 
-### 认证
+### Authentication
 
-获取私人令牌：访问 https://gitee.com/profile/personal_access_tokens 生成新令牌，建议勾选 `user_info`、`projects`、`pull_requests`、`issues` 等权限。
+Generate a personal access token at https://gitee.com/profile/personal_access_tokens. Recommended scopes: `user_info`, `projects`, `pull_requests`, `issues`.
 
 ```bash
-# 交互式登录（推荐，输入 token 不显示）
+# Interactive login (recommended; token input is hidden)
 gitee auth login
 
-# 使用参数登录
+# Login with a flag
 gitee auth login --token <your-personal-access-token>
 
-# 查看当前登录状态
+# Show current login state
 gitee auth status
 
-# 登出并清除本地凭证
+# Log out and clear local credentials
 gitee auth logout
 
-# 查看版本
+# Show version
 gitee version
 ```
 
-### Pull Request
+### Pull Requests
 
 ```bash
-# 交互式创建 PR（推荐）
+# Interactive create (recommended)
 gitee pr create
 
-# 指定参数创建 PR
-gitee pr create --title "Add new feature" --body "This PR adds..."
+# Create with flags
+gitee pr create --title "Add new feature" --body "This PR adds ..."
 
-# 创建草稿 PR
+# Draft PR
 gitee pr create --draft --title "WIP: Refactor auth module"
 
-# 指定审阅者和标签
+# Reviewers and labels
 gitee pr create --title "Fix bug" --assignees user1,user2 --labels bug,urgent
 
-# 创建后自动在浏览器中打开
+# Open the PR in a browser after creating
 gitee pr create --title "Update docs" --web
-```
 
-**参数说明**：
-
-- `--title, -t`：PR 标题（必填，交互式时可在命令行输入）
-- `--body, -b`：PR 描述（可选）
-- `--base`：目标分支（默认 main 或 master）
-- `--head`：源分支（默认当前分支）
-- `--draft, -d`：创建为草稿 PR
-- `--labels, -l`：标签，逗号分隔
-- `--milestone, -m`：里程碑编号
-- `--assignees, -a`：审阅者，逗号分隔的用户名
-- `--testers`：测试者，逗号分隔的用户名
-- `--web, -w`：在浏览器中打开创建的 PR
-
-#### 列出 PR
-
-```bash
-# 列出当前仓库所有开放 PR（默认 --state open）
+# List open PRs in the current repo (default --state open)
 gitee pr list
 
-# 列出已合并的 PR
+# List merged PRs / PRs you authored
 gitee pr list --state merged
-
-# 列出我创建的 PR
 gitee pr list --author @me
 
-# 按标签过滤
-gitee pr list --label bug,urgent
-
-# 按目标分支过滤
-gitee pr list --base main
-
-# 详细模式（显示作者、更新时间）
-gitee pr list --verbose
-
-# JSON 输出，便于脚本处理
+# JSON output for scripting
 gitee pr list --json --limit 50
 
-# 按更新时间升序排序
-gitee pr list --sort updated --direction asc
+# View PR details (with comments)
+gitee pr view 123 --comments
+
+# Check out a PR into a local branch named pr-<number>
+gitee pr checkout 123
+gitee pr checkout https://gitee.com/owner/repo/pulls/456
 ```
 
-**参数说明**：
-
-- `--state, -s`：状态过滤 open/closed/merged/all（默认 open）
-- `--author, -A`：按作者用户名过滤，`@me` 表示当前登录用户
-- `--label, -l`：按标签过滤，逗号分隔
-- `--base`：按目标分支过滤
-- `--head`：按源分支过滤（格式 namespace:branch）
-- `--sort`：排序字段 created/updated/popularity/long-running（默认 created）
-- `--direction`：asc/desc（默认 desc）
-- `--limit, -L`：返回数量上限 1-100（默认 30）
-- `--json`：输出 JSON 原始数据
-- `--verbose, -v`：详细模式，显示作者与更新时间
-- `--no-color`：禁用颜色输出
-
-#### 检出 PR
-
-将一个 Pull Request 检出到本地分支（统一命名为 `pr-<number>`），便于本地评审或测试。
+### Issues
 
 ```bash
-# 通过 PR 编号检出
-gitee pr checkout 123
+# List issues (filter by assignee, state, labels, ...)
+gitee issue list
+gitee issue list --assignee @me
 
-# 通过 PR URL 检出
-gitee pr checkout https://gitee.com/owner/repo/pulls/456
-
-# 本地分支已存在时强制重置到 PR 最新提交（丢弃本地差异）
-gitee pr checkout 123 --force
+# View issue details with comments
+gitee issue view IABCDE --comments
 ```
 
-**参数说明**：
+### Repository & CI
 
-- `<number|url>`：PR 编号或 Gitee PR 链接（暂不支持直接通过分支名检出）
-- `--force, -f`：跳过未提交更改检查，并在本地分支已存在时硬重置到 PR 最新提交
+```bash
+# View repository info (current repo or owner/repo)
+gitee repo view
+gitee repo view owner/repo --json
 
-**行为说明**：
+# View CI/CD status for the current branch
+gitee ci status
+gitee ci status --ref abc1234 --json
+```
 
-- 始终先将 PR 拉取到 `FETCH_HEAD`，再创建或更新本地分支，避免真实 git 拒绝 fetch 到当前检出分支。
-- 本地分支不存在：基于 `FETCH_HEAD` 创建并切换到 `pr-<number>`。
-- 本地分支已存在：切换到该分支后，非 `--force` 仅做快进更新；`--force` 硬重置到 PR 最新提交。
-- 检出已关闭或已合并的 PR 时会给出提示，但仍允许检出。
+Run `gitee <command> --help` for the full flag list of any command.
 
-配置目录可通过环境变量 `GITEE_CLI_CONFIG_DIR` 覆盖，便于测试与自定义部署。
+## Configuration
 
-## 配置文件
-
-默认路径：`~/.config/gitee-cli/config.yaml`
-
-令牌以 **0600 权限**保存，确保安全性。
+Default path: `~/.config/gitee-cli/config.yaml`. The token is stored with **0600** permissions.
 
 ```yaml
 host: https://gitee.com/api/v5
@@ -211,33 +212,28 @@ token: <your-token>
 user: <login>
 ```
 
-## 测试
+The config directory can be overridden with the `GITEE_CLI_CONFIG_DIR` environment variable, which is handy for testing and custom deployments.
+
+## Testing
 
 ```bash
 go test ./... -cover
 ```
 
-当前测试覆盖率：
-- `cmd`: 62.7%
-- `pkg/api`: 81.7%
-- `pkg/auth`: 84.6%
-- `pkg/config`: 61.5%
+## API Docs
 
-## API 文档
-
-接口文档位于 `docs/api/`，采用 OpenAPI 3.0 格式。当前包含：
-
-- `user.openapi.yaml` —— 获取当前认证用户接口
-- `pr.openapi.yaml` —— Pull Request 创建与查询接口
+OpenAPI 3.0 specs live in `docs/api/`: `user`, `pr`, `issue`, `repo`, and `ci`.
 
 ## Claude / Multica Skill
 
-仓库同时提供一份针对 Claude / Multica 智能体的 skill 说明书，覆盖一期 9 个命令的参数、可运行示例、鉴权前置与常见错误处理：
+The repository ships a skill guide for Claude / Multica agents covering all first-release commands with parameters, runnable examples, auth prerequisites, and common error handling:
 
 - `.claude/skills/gitee-cli/SKILL.md`
 
-智能体在 Gitee 仓库目录下被要求执行 PR / Issue / CI 相关任务时可直接加载该 skill。
+## Contributing
 
-## 许可证
+Issues and pull requests are welcome. Please run `go test ./...` and `gofmt` before submitting, and reference the related issue in your commits. See [CHANGELOG.md](CHANGELOG.md) for the release history.
 
-MIT License
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
