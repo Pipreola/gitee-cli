@@ -164,6 +164,125 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    post:
+      summary: 创建 Issue
+      description: 在指定仓库中创建一个新的 Issue。
+      operationId: createIssue
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  description: Issue 标题（必填）
+                  example: "修复登录页面样式问题"
+                body:
+                  type: string
+                  description: Issue 描述内容（可选，支持 Markdown 格式）
+                  example: "登录页面在移动端显示异常，需要调整响应式布局。"
+                labels:
+                  type: string
+                  description: 标签列表（可选），逗号分隔
+                  example: "bug,urgent"
+                assignees:
+                  type: string
+                  description: 指派人列表（可选），逗号分隔的用户名
+                  example: "bob,alice"
+                milestone:
+                  type: integer
+                  description: 里程碑编号（可选）
+                  example: 1
+      responses:
+        '201':
+          description: Issue 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+              example:
+                id: 123456
+                number: "I1ABC"
+                state: "open"
+                title: "修复登录页面样式问题"
+                body: "登录页面在移动端显示异常，需要调整响应式布局。"
+                html_url: "https://gitee.com/pipreola/gitee-cli/issues/I1ABC"
+                user:
+                  id: 1001
+                  login: "alice"
+                  name: "Alice"
+                labels:
+                  - id: 1
+                    name: "bug"
+                    color: "fc2929"
+                  - id: 2
+                    name: "urgent"
+                    color: "eb6420"
+                assignee:
+                  id: 1002
+                  login: "bob"
+                  name: "Bob"
+                milestone:
+                  id: 10
+                  title: "v1.0"
+                  number: 1
+                comments: 0
+                created_at: "2024-01-01T10:00:00+08:00"
+                updated_at: "2024-01-01T10:00:00+08:00"
+        '400':
+          description: 请求参数错误（如缺少必填字段 title）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未授权，access_token 无效或缺失
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足，无权在此仓库创建 Issue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 仓库不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /repos/{owner}/{repo}/issues/{number}:
     get:
       summary: 查看 Issue 详情

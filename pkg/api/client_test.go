@@ -611,3 +611,121 @@ func TestGetCombinedStatusValidation(t *testing.T) {
 		t.Error("期望 ref 为空时报错")
 	}
 }
+
+// TestCreateIssueSuccess 验证创建 Issue 的成功路径。
+func TestCreateIssueSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/issues" {
+			t.Errorf("路径 = %q, 期望 /repos/owner/repo/issues", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("方法 = %q, 期望 POST", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q, 期望 application/json", got)
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":123,"number":"I1ABC","state":"open","title":"测试Issue","html_url":"https://gitee.com/owner/repo/issues/I1ABC"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "token")
+	input := &CreateIssueInput{
+		Title:     "测试Issue",
+		Body:      "这是描述",
+		Labels:    "bug,urgent",
+		Assignees: "user1",
+	}
+
+	issue, err := client.CreateIssue(context.Background(), "owner", "repo", input)
+	if err != nil {
+		t.Fatalf("CreateIssue 返回错误: %v", err)
+	}
+	if issue.Number != "I1ABC" || issue.Title != "测试Issue" {
+		t.Errorf("issue = %+v, 不符合预期", issue)
+	}
+}
+
+// TestCreateIssueValidation 验证 CreateIssue 的输入参数校验。
+func TestCreateIssueValidation(t *testing.T) {
+	client := NewClient("https://example.com", "tok")
+	ctx := context.Background()
+
+	tests := []struct {
+		name   string
+		owner  string
+		repo   string
+		input  *CreateIssueInput
+		errMsg string
+	}{
+		{
+			name:   "input 为 nil",
+			owner:  "o",
+			repo:   "r",
+			input:  nil,
+			errMsg: "input 不能为空",
+		},
+		{
+			name:   "owner 为空",
+			owner:  "",
+			repo:   "r",
+			input:  &CreateIssueInput{Title: "test"},
+			errMsg: "owner 和 repo 不能为空",
+		},
+		{
+			name:   "repo 为空",
+			owner:  "o",
+			repo:   "",
+			input:  &CreateIssueInput{Title: "test"},
+			errMsg: "owner 和 repo 不能为空",
+		},
+		{
+			name:   "title 为空",
+			owner:  "o",
+			repo:   "r",
+			input:  &CreateIssueInput{Title: ""},
+			errMsg: "title 是必填参数",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := client.CreateIssue(ctx, tt.owner, tt.repo, tt.input)
+			if err == nil {
+				t.Fatal("期望返回错误，实际为 nil")
+			}
+			if !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("错误信息 = %q, 期望包含 %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestCreateIssueBadRequest 验证 400 错误响应的处理。
+func TestCreateIssueBadRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"title 不能为空"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "token")
+	input := &CreateIssueInput{Title: "test"}
+
+	_, err := client.CreateIssue(context.Background(), "owner", "repo", input)
+	if err == nil {
+		t.Fatal("期望返回错误，实际为 nil")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("错误类型 = %T, 期望 *APIError", err)
+	}
+	if apiErr.StatusCode != http.StatusBadRequest {
+		t.Errorf("StatusCode = %d, 期望 400", apiErr.StatusCode)
+	}
+	if !strings.Contains(apiErr.Message, "title 不能为空") {
+		t.Errorf("Message = %q, 期望包含 'title 不能为空'", apiErr.Message)
+	}
+}
