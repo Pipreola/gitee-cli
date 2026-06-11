@@ -252,7 +252,7 @@ gitee pr view <number> [flags]
 
 | Flag | 简写 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- | --- |
-| `--web` | `-w` | bool | false | 在浏览器中打开 PR 页面（设置后不再拉取详情/评论） |
+| `--web` | `-w` | bool | false | 打开 PR 页面（仍会先获取 PR 详情以取得 URL；不会拉取评论或输出详情） |
 | `--comments` | `-c` | bool | false | 追加显示 PR 评论列表 |
 | `--json` | | bool | false | 输出 JSON（`{pull_request, comments?}` 结构） |
 | `--no-color` | | bool | false | 禁用颜色 |
