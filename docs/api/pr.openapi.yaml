@@ -386,6 +386,90 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 message: "Not Found"
+    post:
+      summary: 创建 Pull Request 评论
+      description: 为指定 PR 添加评论，供 `gitee pr comment` 使用。
+      operationId: createPullRequestComment
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "owner"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "repo"
+        - name: number
+          in: path
+          required: true
+          description: Pull Request 编号
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  description: 评论内容
+                  example: "LGTM，建议合并"
+                  minLength: 1
+      responses:
+        '201':
+          description: 评论创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "评论内容不能为空"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+        '404':
+          description: 仓库或 PR 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Not Found"
 
 components:
   securitySchemes:
