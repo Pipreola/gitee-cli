@@ -604,6 +604,10 @@ components:
           type: string
           description: 评论内容
           example: "LGTM，建议合并"
+        html_url:
+          type: string
+          description: 评论的网页 URL
+          example: "https://gitee.com/pipreola/gitee-cli/pulls/456#note_789"
         user:
           $ref: '#/components/schemas/User'
         created_at:

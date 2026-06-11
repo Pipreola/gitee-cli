@@ -564,6 +564,11 @@ components:
           type: string
           description: 评论内容（Markdown 格式）
           example: "我来看看这个问题。"
+        html_url:
+          type: string
+          format: uri
+          description: 评论的网页 URL
+          example: "https://gitee.com/owner/repo/issues/I1ABC#note_10001"
         user:
           $ref: '#/components/schemas/User'
           description: 评论者信息

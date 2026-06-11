@@ -411,6 +411,7 @@ func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Reposi
 type Comment struct {
 	ID        int64  `json:"id"`
 	Body      string `json:"body"`
+	HTMLURL   string `json:"html_url"`
 	User      User   `json:"user"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -436,19 +437,19 @@ func (c *Client) ListPullRequestComments(ctx context.Context, owner, repo string
 // Issue 表示 Gitee Issue 的完整信息。
 // 注意：Gitee Issue 的 number 字段是字符串类型（可能包含字母前缀），与 PR 不同。
 type Issue struct {
-	ID        int64  `json:"id"`
-	Number    string `json:"number"`
-	State     string `json:"state"`
-	HTMLURL   string `json:"html_url"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	User      User   `json:"user"`
-	Labels    []struct {
+	ID      int64  `json:"id"`
+	Number  string `json:"number"`
+	State   string `json:"state"`
+	HTMLURL string `json:"html_url"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	User    User   `json:"user"`
+	Labels  []struct {
 		ID    int64  `json:"id"`
 		Name  string `json:"name"`
 		Color string `json:"color"`
 	} `json:"labels"`
-	Assignee  *User  `json:"assignee"`
+	Assignee  *User `json:"assignee"`
 	Milestone *struct {
 		ID     int64  `json:"id"`
 		Title  string `json:"title"`
