@@ -452,6 +452,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: 创建 Issue 评论
+      description: 为指定 Issue 添加评论，供 `gitee issue comment` 使用。
+      operationId: createIssueComment
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: number
+          in: path
+          required: true
+          description: Issue 编号
+          schema:
+            type: string
+          example: "I1ABC"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  description: 评论内容
+                  example: "已经在本地复现了，正在修复中。"
+                  minLength: 1
+      responses:
+        '201':
+          description: 评论创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+              example:
+                id: 10003
+                body: "已经在本地复现了，正在修复中。"
+                user:
+                  id: 1002
+                  login: "bob"
+                  name: "Bob"
+                  avatar_url: "https://gitee.com/assets/no_portrait.png"
+                  html_url: "https://gitee.com/bob"
+                created_at: "2024-01-06T10:00:00+08:00"
+                updated_at: "2024-01-06T10:00:00+08:00"
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "评论内容不能为空"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Issue 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
@@ -595,6 +683,11 @@ components:
           type: string
           description: 评论内容（Markdown 格式）
           example: "我来看看这个问题。"
+        html_url:
+          type: string
+          format: uri
+          description: 评论的网页 URL
+          example: "https://gitee.com/owner/repo/issues/I1ABC#note_10001"
         user:
           $ref: '#/components/schemas/User'
           description: 评论者信息
