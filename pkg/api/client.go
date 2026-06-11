@@ -411,6 +411,7 @@ func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Reposi
 type Comment struct {
 	ID        int64  `json:"id"`
 	Body      string `json:"body"`
+	HTMLURL   string `json:"html_url"`
 	User      User   `json:"user"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -436,19 +437,19 @@ func (c *Client) ListPullRequestComments(ctx context.Context, owner, repo string
 // Issue 表示 Gitee Issue 的完整信息。
 // 注意：Gitee Issue 的 number 字段是字符串类型（可能包含字母前缀），与 PR 不同。
 type Issue struct {
-	ID        int64  `json:"id"`
-	Number    string `json:"number"`
-	State     string `json:"state"`
-	HTMLURL   string `json:"html_url"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	User      User   `json:"user"`
-	Labels    []struct {
+	ID      int64  `json:"id"`
+	Number  string `json:"number"`
+	State   string `json:"state"`
+	HTMLURL string `json:"html_url"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	User    User   `json:"user"`
+	Labels  []struct {
 		ID    int64  `json:"id"`
 		Name  string `json:"name"`
 		Color string `json:"color"`
 	} `json:"labels"`
-	Assignee  *User  `json:"assignee"`
+	Assignee  *User `json:"assignee"`
 	Milestone *struct {
 		ID     int64  `json:"id"`
 		Title  string `json:"title"`
@@ -652,4 +653,148 @@ func (c *Client) GetCombinedStatus(ctx context.Context, owner, repo, ref string)
 		return nil, err
 	}
 	return &combined, nil
+}
+
+// CreatePullRequestCommentInput 是创建 PR 评论的输入参数。
+type CreatePullRequestCommentInput struct {
+	// Body 是评论内容（必填）。
+	Body string `json:"body"`
+}
+
+// CreatePullRequestComment 调用 POST /repos/:owner/:repo/pulls/:number/comments 创建 PR 评论。
+func (c *Client) CreatePullRequestComment(ctx context.Context, owner, repo string, number int64, input *CreatePullRequestCommentInput) (*Comment, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input 不能为空")
+	}
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return nil, fmt.Errorf("PR 编号必须大于 0")
+	}
+	if input.Body == "" {
+		return nil, fmt.Errorf("评论内容不能为空")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/comments", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	// 构造请求体
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// 构造请求
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	var comment Comment
+	if err := json.Unmarshal(respBody, &comment); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return &comment, nil
+}
+
+// CreateIssueCommentInput 是创建 Issue 评论的输入参数。
+type CreateIssueCommentInput struct {
+	// Body 是评论内容（必填）。
+	Body string `json:"body"`
+}
+
+// CreateIssueComment 调用 POST /repos/:owner/:repo/issues/:number/comments 创建 Issue 评论。
+func (c *Client) CreateIssueComment(ctx context.Context, owner, repo, number string, input *CreateIssueCommentInput) (*Comment, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input 不能为空")
+	}
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number == "" {
+		return nil, fmt.Errorf("Issue 编号不能为空")
+	}
+	if input.Body == "" {
+		return nil, fmt.Errorf("评论内容不能为空")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/issues/%s/comments", escapePathSegment(owner), escapePathSegment(repo), escapePathSegment(number))
+
+	// 构造请求体
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// 构造请求
+	query := url.Values{}
+	if c.token != "" {
+		query.Set("access_token", c.token)
+	}
+
+	fullURL := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		fullURL += "?" + encoded
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	var comment Comment
+	if err := json.Unmarshal(respBody, &comment); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return &comment, nil
 }

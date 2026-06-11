@@ -12,6 +12,7 @@ func newIssueCmd() *cobra.Command {
 
 	cmd.AddCommand(newIssueListCmd())
 	cmd.AddCommand(newIssueViewCmd())
+	cmd.AddCommand(newIssueCommentCmd())
 
 	return cmd
 }
