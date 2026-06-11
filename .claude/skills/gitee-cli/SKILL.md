@@ -24,13 +24,15 @@ description: Usage manual for the phase-1 gitee CLI commands. Covers the paramet
 
 ## Authentication Prerequisites (read first)
 
-Except for `gitee auth login` / `gitee version`, **all commands require a local login** (a valid token saved in the config). When not logged in, commands fail immediately:
+Business commands (repo / PR / issue / CI, etc.) **require a local login** (a valid token saved in the config). When not logged in, these commands fail immediately:
 
 ```
 未登录，请先运行 'gitee auth login' 进行认证
 ```
 
 (*"Not logged in, please run 'gitee auth login' to authenticate first."*)
+
+The following commands do **not** require an existing login: `gitee auth login` and `gitee version`; `gitee auth status` works without a token and reports the login state (printing `✗ 未登录` when not logged in); `gitee auth logout` simply clears the local credential.
 
 ### Where the token comes from
 
