@@ -807,6 +807,84 @@ func (c *Client) GetCombinedStatus(ctx context.Context, owner, repo, ref string)
 	return &combined, nil
 }
 
+// MergePullRequestInput 是合并 Pull Request 的输入参数。
+//
+// 注意：Gitee v5 的 PUT /repos/{owner}/{repo}/pulls/{number}/merge 接口
+// 按 formData（application/x-www-form-urlencoded）接收参数，而非 JSON body。
+// 官方字段命名为 merge_method / title / description / prune_source_branch。
+type MergePullRequestInput struct {
+	// MergeMethod 是合并方式：merge（默认）/ squash / rebase，对应 form 字段 merge_method。
+	MergeMethod string
+	// Title 是自定义合并提交标题（可选），对应 form 字段 title。
+	Title string
+	// Description 是自定义合并提交信息（可选），对应 form 字段 description。
+	Description string
+	// PruneSourceBranch 是否在合并后删除源分支（可选），对应 form 字段 prune_source_branch。
+	PruneSourceBranch bool
+}
+
+// MergePullRequest 调用 PUT /repos/:owner/:repo/pulls/:number/merge 合并 Pull Request。
+// 参数以 application/x-www-form-urlencoded 形式提交，符合 Gitee v5 contract。
+func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, number int64, input *MergePullRequestInput) error {
+	if owner == "" || repo == "" {
+		return fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return fmt.Errorf("PR 编号必须大于 0")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	// 构造 form 表单：access_token 与各合并参数均以 form 字段提交。
+	form := url.Values{}
+	if c.token != "" {
+		form.Set("access_token", c.token)
+	}
+	if input != nil {
+		if input.MergeMethod != "" {
+			form.Set("merge_method", input.MergeMethod)
+		}
+		if input.Title != "" {
+			form.Set("title", input.Title)
+		}
+		if input.Description != "" {
+			form.Set("description", input.Description)
+		}
+		if input.PruneSourceBranch {
+			form.Set("prune_source_branch", "true")
+		}
+	}
+
+	fullURL := c.baseURL + path
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, fullURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	return nil
+}
+
 // CreatePullRequestCommentInput 是创建 PR 评论的输入参数。
 type CreatePullRequestCommentInput struct {
 	// Body 是评论内容（必填）。
