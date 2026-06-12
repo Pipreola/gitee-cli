@@ -14,14 +14,23 @@ import (
 
 // fakeGitRunner 是测试用的 git 桩实现。
 type fakeGitRunner struct {
-	remoteURL       string
-	currentBranch   string
-	verifyBranches  map[string]bool // branch -> exists
-	lsRemoteOutput  map[string]string
-	pushErr         error
+	remoteURL      string
+	currentBranch  string
+	verifyBranches map[string]bool // branch -> exists
+	lsRemoteOutput map[string]string
+	pushErr        error
+
+	// runCalls / interactiveCalls 记录历史调用，供 repo clone 等用例断言。
+	runCalls         [][]string
+	interactiveCalls [][]string
+	// cloneErr 注入 git clone（runInteractive）的错误。
+	cloneErr error
+	// setURLErr 注入 remote set-url（run）的错误。
+	setURLErr error
 }
 
 func (f *fakeGitRunner) run(args ...string) (string, error) {
+	f.runCalls = append(f.runCalls, args)
 	switch {
 	case len(args) >= 3 && args[0] == "remote" && args[1] == "get-url" && args[2] == "origin":
 		if f.remoteURL == "" {
@@ -45,13 +54,20 @@ func (f *fakeGitRunner) run(args ...string) (string, error) {
 			return out, nil
 		}
 		return "", nil
+	// repo clone 重置 origin：git -C <dir> remote set-url origin <url>
+	case len(args) >= 5 && args[0] == "-C" && args[2] == "remote" && args[3] == "set-url":
+		return "", f.setURLErr
 	}
 	return "", fmt.Errorf("未桩化的 git 调用: %v", args)
 }
 
 func (f *fakeGitRunner) runInteractive(args ...string) error {
+	f.interactiveCalls = append(f.interactiveCalls, args)
 	if len(args) >= 4 && args[0] == "push" && args[1] == "-u" {
 		return f.pushErr
+	}
+	if len(args) >= 1 && args[0] == "clone" {
+		return f.cloneErr
 	}
 	return fmt.Errorf("未桩化的交互 git 调用: %v", args)
 }
@@ -128,10 +144,10 @@ func TestRunPRCreateDefaultBaseDetection(t *testing.T) {
 	opts := prCreateOptions{title: "test", head: "feat", base: ""}
 	env := prCreateEnv{
 		git: &fakeGitRunner{
-			remoteURL:       "https://gitee.com/owner/repo.git",
-			currentBranch:   "feat",
-			verifyBranches:  map[string]bool{"origin/main": true},
-			lsRemoteOutput:  map[string]string{"origin feat": "abc123"},
+			remoteURL:      "https://gitee.com/owner/repo.git",
+			currentBranch:  "feat",
+			verifyBranches: map[string]bool{"origin/main": true},
+			lsRemoteOutput: map[string]string{"origin feat": "abc123"},
 		},
 		loadConfig: func() (*config.Config, error) {
 			return &config.Config{Host: "https://gitee.com/api/v5", Token: "tok"}, nil
