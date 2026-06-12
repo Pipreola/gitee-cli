@@ -67,6 +67,7 @@ func newRepoCmd() *cobra.Command {
 		Long:  "查看 Gitee 仓库信息。",
 	}
 	repoCmd.AddCommand(newRepoViewCmd())
+	repoCmd.AddCommand(newRepoCloneCmd())
 	return repoCmd
 }
 
