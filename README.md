@@ -30,6 +30,7 @@ The first release covers the following commands:
 | `gitee pr list` | List PRs with state / author / label / branch filters |
 | `gitee pr view` | View Pull Request details |
 | `gitee pr checkout` | Check out a PR into a local branch |
+| `gitee pr review` | Review a PR (`--approve` to approve / `--comment` to comment) |
 | `gitee issue list` | List issues with filters |
 | `gitee issue view` | View issue details |
 | `gitee ci status` | View CI/CD build status for the repository |
@@ -175,6 +176,12 @@ gitee pr view 123 --comments
 # Check out a PR into a local branch named pr-<number>
 gitee pr checkout 123
 gitee pr checkout https://gitee.com/owner/repo/pulls/456
+
+# Review a PR
+gitee pr review 123 --approve                                          # approve
+gitee pr review 123 --approve --body "LGTM, looks clean"               # approve with a comment
+gitee pr review 123 --approve --force                                  # force-approve (bypass branch protection rules)
+gitee pr review 123 --comment --body "Line 10: please add bounds check" # comment-only review
 ```
 
 ### Issues
