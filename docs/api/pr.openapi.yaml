@@ -1,8 +1,8 @@
 openapi: 3.0.0
 info:
   title: Gitee Pull Request API
-  description: Gitee Pull Request 创建、查询、查看与评论接口文档
-  version: 1.2.0
+  description: Gitee Pull Request 创建、查询、查看、评论与合并接口文档
+  version: 1.3.1
   contact:
     name: Gitee API
     url: https://gitee.com/api/v5/swagger
@@ -411,6 +411,115 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 message: "Not Found"
+
+  /repos/{owner}/{repo}/pulls/{number}/merge:
+    put:
+      summary: 合并 Pull Request
+      description: |
+        合并指定编号的 Pull Request，支持 merge / squash / rebase 三种方式。
+        合并前应校验 PR 为 open 且可合并（mergeable=true）。
+
+        **重要**：Gitee v5 (Swagger 5.4.92) 该接口按 formData 接收参数，
+        Content-Type 必须为 `application/x-www-form-urlencoded`，
+        字段命名为 `merge_method` / `title` / `description` / `prune_source_branch`。
+        `access_token` 也以 form 字段提交。
+      operationId: mergePullRequest
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: number
+          in: path
+          required: true
+          description: Pull Request 编号
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - access_token
+              properties:
+                access_token:
+                  type: string
+                  description: 用户授权码（Gitee v5 要求以 form 字段提交）
+                merge_method:
+                  type: string
+                  description: 合并方式
+                  enum: [merge, squash, rebase]
+                  default: merge
+                  example: "merge"
+                title:
+                  type: string
+                  description: 自定义合并提交标题（可选）
+                  example: "Merge feature X into main"
+                description:
+                  type: string
+                  description: 自定义合并提交信息（可选）；CLI 的 --message 映射到此字段
+                  example: "Squash commits for clean history"
+                prune_source_branch:
+                  type: boolean
+                  description: 合并后是否删除源分支
+                  default: false
+                  example: false
+      responses:
+        '200':
+          description: 合并成功（无响应体）
+        '400':
+          description: 参数错误或 PR 不可合并
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "PR 当前不可合并，可能存在冲突"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 仓库或 PR 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          description: PR 状态不允许合并（已关闭或已合并）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "PR 已关闭，无法合并"
 
   /repos/{owner}/{repo}/pulls/{number}.diff:
     get:
