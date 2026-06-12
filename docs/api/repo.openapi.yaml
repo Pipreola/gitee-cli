@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Gitee Repository API
   description: Gitee 仓库查看接口文档
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: Gitee API
     url: https://gitee.com/api/v5/swagger
@@ -12,6 +12,320 @@ servers:
     description: Gitee OpenAPI v5
 
 paths:
+  /user/repos:
+    get:
+      summary: 列出当前用户的仓库
+      description: 列出当前认证用户的仓库列表，供 `gitee repo list` 显示。
+      operationId: listUserRepositories
+      tags:
+        - Repository
+      security:
+        - access_token: []
+      parameters:
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+        - name: visibility
+          in: query
+          required: false
+          description: 可见性过滤：public/private/all（默认 all）
+          schema:
+            type: string
+            enum: [public, private, all]
+          example: "all"
+        - name: affiliation
+          in: query
+          required: false
+          description: 用户与仓库的关系过滤：owner/collaborator/organization_member
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          description: 仓库类型过滤
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: 排序字段：created（默认）/updated/pushed/full_name
+          schema:
+            type: string
+            enum: [created, updated, pushed, full_name]
+          example: "updated"
+        - name: direction
+          in: query
+          required: false
+          description: 排序方向：asc/desc
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: page
+          in: query
+          required: false
+          description: 页码（从 1 开始，默认 1）
+          schema:
+            type: integer
+            minimum: 1
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          description: 每页数量（1-100，默认 20）
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          example: 30
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "401 Unauthorized"
+    post:
+      summary: 创建个人仓库
+      description: 在当前认证用户名下创建仓库，供 `gitee repo create` 使用。
+      operationId: createUserRepository
+      tags:
+        - Repository
+      security:
+        - access_token: []
+      parameters:
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRepositoryInput'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orgs/{org}/repos:
+    get:
+      summary: 列出组织的仓库
+      description: 列出指定组织的仓库列表，供 `gitee repo list --org` 显示。
+      operationId: listOrgRepositories
+      tags:
+        - Repository
+      security:
+        - access_token: []
+      parameters:
+        - name: org
+          in: path
+          required: true
+          description: 组织的路径（path）
+          schema:
+            type: string
+          example: "my-org"
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+        - name: type
+          in: query
+          required: false
+          description: 仓库类型过滤
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: 排序字段：created（默认）/updated/pushed/full_name
+          schema:
+            type: string
+            enum: [created, updated, pushed, full_name]
+        - name: direction
+          in: query
+          required: false
+          description: 排序方向：asc/desc
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: page
+          in: query
+          required: false
+          description: 页码（从 1 开始，默认 1）
+          schema:
+            type: integer
+            minimum: 1
+        - name: per_page
+          in: query
+          required: false
+          description: 每页数量（1-100，默认 20）
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 组织不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: 创建组织仓库
+      description: 在指定组织下创建仓库，供 `gitee repo create --org` 使用。
+      operationId: createOrgRepository
+      tags:
+        - Repository
+      security:
+        - access_token: []
+      parameters:
+        - name: org
+          in: path
+          required: true
+          description: 组织的路径（path）
+          schema:
+            type: string
+          example: "my-org"
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRepositoryInput'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /repos/{owner}/{repo}/forks:
+    post:
+      summary: Fork 仓库
+      description: Fork 指定仓库到当前用户名下或指定组织，供 `gitee repo fork` 使用。
+      operationId: forkRepository
+      tags:
+        - Repository
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 源仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "owner"
+        - name: repo
+          in: path
+          required: true
+          description: 源仓库路径（path）
+          schema:
+            type: string
+          example: "repo"
+        - name: access_token
+          in: query
+          required: true
+          description: Gitee Personal Access Token
+          schema:
+            type: string
+          example: "your_access_token_here"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForkRepositoryInput'
+      responses:
+        '201':
+          description: Fork 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 源仓库不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /repos/{owner}/{repo}:
     get:
       summary: 获取仓库信息
@@ -196,3 +510,45 @@ components:
           type: string
           description: 错误代码或详细信息
           example: "invalid_parameter"
+
+    CreateRepositoryInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: 仓库名称（必填）
+          example: "my-repo"
+        description:
+          type: string
+          description: 仓库描述
+          example: "我的项目"
+        homepage:
+          type: string
+          description: 仓库主页地址
+          example: "https://example.com"
+        private:
+          type: boolean
+          description: 是否创建为私有仓库（默认公开）
+          example: false
+        auto_init:
+          type: boolean
+          description: 是否自动初始化仓库（生成 README）
+          example: false
+
+    ForkRepositoryInput:
+      type: object
+      properties:
+        organization:
+          type: string
+          description: Fork 到的目标组织（为空时 fork 到当前用户名下）
+          example: "my-org"
+        name:
+          type: string
+          description: Fork 后的新仓库名称（为空时沿用源仓库名称）
+          example: "my-fork"
+        path:
+          type: string
+          description: Fork 后的新仓库路径
+          example: "my-fork"
