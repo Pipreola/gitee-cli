@@ -603,6 +603,66 @@ func TestGetCombinedStatusRefEscaping(t *testing.T) {
 	}
 }
 
+// TestGetPullRequestDiffSuccess 验证获取 PR diff 文本。
+func TestGetPullRequestDiffSuccess(t *testing.T) {
+	wantDiff := "diff --git a/f.go b/f.go\n--- a/f.go\n+++ b/f.go\n@@ -1 +1 @@\n-old\n+new\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/repos/owner/repo/pulls/7.diff" {
+			t.Errorf("路径 = %q, 期望 /repos/owner/repo/pulls/7.diff", got)
+		}
+		if r.URL.Query().Get("access_token") != "tok" {
+			t.Errorf("access_token = %q", r.URL.Query().Get("access_token"))
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(wantDiff))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	diff, err := client.GetPullRequestDiff(context.Background(), "owner", "repo", 7)
+	if err != nil {
+		t.Fatalf("GetPullRequestDiff 返回错误: %v", err)
+	}
+	if diff != wantDiff {
+		t.Errorf("diff = %q, 期望 %q", diff, wantDiff)
+	}
+}
+
+// TestGetPullRequestDiffValidation 验证参数校验。
+func TestGetPullRequestDiffValidation(t *testing.T) {
+	client := NewClient("", "tok")
+	if _, err := client.GetPullRequestDiff(context.Background(), "", "r", 1); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 owner 校验错误，实际: %v", err)
+	}
+	if _, err := client.GetPullRequestDiff(context.Background(), "o", "r", 0); err == nil ||
+		!strings.Contains(err.Error(), "PR 编号必须大于 0") {
+		t.Errorf("期望编号校验错误，实际: %v", err)
+	}
+}
+
+// TestGetPullRequestDiffAPIError 验证 404 错误返回 APIError。
+func TestGetPullRequestDiffAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	_, err := client.GetPullRequestDiff(context.Background(), "o", "r", 999)
+	if err == nil {
+		t.Fatal("期望 API 错误，实际为 nil")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("错误类型 = %T, 期望 *APIError", err)
+	}
+	if apiErr.StatusCode != http.StatusNotFound {
+		t.Errorf("StatusCode = %d, 期望 404", apiErr.StatusCode)
+	}
+}
+
 // TestGetCombinedStatusValidation 验证 owner/repo/ref 的本地校验。
 func TestGetCombinedStatusValidation(t *testing.T) {
 	client := NewClient("https://example.com", "tok")
