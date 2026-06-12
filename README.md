@@ -31,9 +31,11 @@ The first release covers the following commands:
 | `gitee pr list` | List PRs with state / author / label / branch filters |
 | `gitee pr view` | View Pull Request details |
 | `gitee pr checkout` | Check out a PR into a local branch |
+| `gitee pr edit` | Edit a PR's title / body / labels / assignees / milestone |
 | `gitee pr review` | Review a PR (`--approve` to approve / `--comment` to comment) |
 | `gitee issue list` | List issues with filters |
 | `gitee issue view` | View issue details |
+| `gitee issue edit` | Edit an issue's title / body / labels / assignee / milestone |
 | `gitee ci status` | View CI/CD build status for the repository |
 
 Output matches the conventions of `gh` / `glab`, and most read commands support `--json` for scripting.
@@ -178,6 +180,11 @@ gitee pr view 123 --comments
 gitee pr checkout 123
 gitee pr checkout https://gitee.com/owner/repo/pulls/456
 
+# Edit a PR (only the flags you pass are changed)
+gitee pr edit 123 --title "New title" --body "Updated description"
+gitee pr edit 123 --labels bug,urgent --assignees user1,user2
+gitee pr edit 123 --labels ""   # pass empty string to clear labels
+
 # Review a PR
 gitee pr review 123 --approve                                          # approve
 gitee pr review 123 --approve --body "LGTM, looks clean"               # approve with a comment
@@ -194,6 +201,10 @@ gitee issue list --assignee @me
 
 # View issue details with comments
 gitee issue view IABCDE --comments
+
+# Edit an issue (only the flags you pass are changed)
+gitee issue edit IABCDE --title "New title" --body "Updated description"
+gitee issue edit IABCDE --labels bug --assignee user1 --milestone 5
 ```
 
 ### Repository & CI

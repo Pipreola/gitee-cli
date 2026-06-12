@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Gitee Issue API
   description: Gitee Issue 查询、查看与评论接口文档
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: Gitee API
     url: https://gitee.com/api/v5/swagger
@@ -470,6 +470,119 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 message: "Not Found"
+    patch:
+      summary: 编辑 Issue
+      description: |
+        编辑指定 Issue 的标题、正文、标签、指派人或里程碑。
+        仅提交显式指定的字段（PATCH 部分更新语义）。
+        供 `gitee issue edit` 使用。
+
+        **注意**：指派人字段名为 `assignee`（单数），里程碑字段名为 `milestone`。
+      operationId: editIssue
+      tags:
+        - Issue
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "owner"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "repo"
+        - name: number
+          in: path
+          required: true
+          description: Issue 编号
+          schema:
+            type: string
+          example: "I1ABC"
+        - name: access_token
+          in: query
+          required: true
+          description: 用户授权码
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - repo
+              properties:
+                repo:
+                  type: string
+                  description: 仓库路径（与 UpdateIssueState 保持一致，必须随请求体提交）
+                  example: "repo"
+                title:
+                  type: string
+                  description: Issue 标题
+                  example: "新标题"
+                body:
+                  type: string
+                  description: Issue 描述内容
+                  example: "更新后的描述"
+                labels:
+                  type: string
+                  description: 标签，逗号分隔
+                  example: "bug,urgent"
+                assignee:
+                  type: string
+                  description: 指派人登录名（单数形式）
+                  example: "user1"
+                milestone:
+                  type: integer
+                  format: int64
+                  description: 里程碑编号
+                  example: 5
+              minProperties: 2
+            example:
+              repo: "gitee-cli"
+              title: "修复登录问题"
+              labels: "bug,p0"
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "至少需要指定一个待修改字段"
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Issue 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /repos/{owner}/{repo}/issues/{number}/comments:
     get:

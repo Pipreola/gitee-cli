@@ -16,6 +16,7 @@ func newIssueCmd() *cobra.Command {
 	cmd.AddCommand(newIssueCommentCmd())
 	cmd.AddCommand(newIssueCloseCmd())
 	cmd.AddCommand(newIssueReopenCmd())
+	cmd.AddCommand(newIssueEditCmd())
 
 	return cmd
 }
