@@ -31,6 +31,7 @@
 | `gitee pr list` | 按状态/作者/标签/分支过滤列出 PR |
 | `gitee pr view` | 查看 Pull Request 详情 |
 | `gitee pr checkout` | 将 PR 检出到本地分支 |
+| `gitee pr review` | 审查 PR（`--approve` 通过 / `--comment` 仅评论） |
 | `gitee issue list` | 按条件过滤列出 Issue |
 | `gitee issue view` | 查看 Issue 详情 |
 | `gitee ci status` | 查看仓库的 CI/CD 构建状态 |
@@ -176,6 +177,12 @@ gitee pr view 123 --comments
 # 将 PR 检出到本地分支（统一命名为 pr-<number>）
 gitee pr checkout 123
 gitee pr checkout https://gitee.com/owner/repo/pulls/456
+
+# 审查 PR
+gitee pr review 123 --approve                              # 审查通过
+gitee pr review 123 --approve --body "LGTM，逻辑清晰"      # 通过并附评论
+gitee pr review 123 --approve --force                       # 强制通过（忽略分支保护规则）
+gitee pr review 123 --comment --body "第 10 行建议补充边界校验"  # 仅发表评论
 ```
 
 ### Issue

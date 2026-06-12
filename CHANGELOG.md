@@ -14,6 +14,15 @@
   - 支持在 `--` 之后透传 `--depth`、`--branch` 等参数给底层 `git clone`
   - 克隆完成后自动将 `origin` 重置为不含令牌的干净 URL，避免令牌泄露
 
+### ✨ 新增
+
+- **`gitee pr review <number>`**（CRH-25）- 审查 Pull Request
+  - `--approve` 调用 `POST /repos/{owner}/{repo}/pulls/{number}/review` 标记审查通过
+  - `--comment` + `--body` / `--body-file` 仅发表审查评论
+  - `--approve --body` 在审查通过后追加一条评论
+  - `--force` 透传到接口 `force` 字段，忽略分支保护的审查/测试规则限制
+  - 同步更新 `docs/api/pr.openapi.yaml`
+
 ---
 
 ## [1.0.0] - 2026-06-10

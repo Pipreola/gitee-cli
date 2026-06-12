@@ -957,6 +957,68 @@ func (c *Client) CreatePullRequestComment(ctx context.Context, owner, repo strin
 	return &comment, nil
 }
 
+// ReviewPullRequestInput 是处理 Pull Request 审查（审查通过）的输入参数。
+//
+// 注意：Gitee v5 的 POST /repos/{owner}/{repo}/pulls/{number}/review 接口
+// 按 formData（application/x-www-form-urlencoded）接收参数，而非 JSON body。
+// 官方仅定义 force 字段，用于在开启分支保护时强制通过审查。
+type ReviewPullRequestInput struct {
+	// Force 是否强制通过，忽略分支保护设置中的审查/测试规则限制（可选），
+	// 对应 form 字段 force。
+	Force bool
+}
+
+// ReviewPullRequest 调用 POST /repos/:owner/:repo/pulls/:number/review 处理 PR 审查（审查通过）。
+// 参数以 application/x-www-form-urlencoded 形式提交，符合 Gitee v5 contract。
+func (c *Client) ReviewPullRequest(ctx context.Context, owner, repo string, number int64, input *ReviewPullRequestInput) error {
+	if owner == "" || repo == "" {
+		return fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return fmt.Errorf("PR 编号必须大于 0")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/review", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	// 构造 form 表单：access_token 与 force 均以 form 字段提交。
+	form := url.Values{}
+	if c.token != "" {
+		form.Set("access_token", c.token)
+	}
+	if input != nil && input.Force {
+		form.Set("force", "true")
+	}
+
+	fullURL := c.baseURL + path
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("构造请求失败: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    parseErrorMessage(respBody),
+		}
+	}
+
+	return nil
+}
+
 // CreateIssueCommentInput 是创建 Issue 评论的输入参数。
 type CreateIssueCommentInput struct {
 	// Body 是评论内容（必填）。
