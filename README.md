@@ -26,6 +26,7 @@ The first release covers the following commands:
 | `gitee auth status` | Show the current login state |
 | `gitee auth logout` | Log out and clear local credentials |
 | `gitee repo view` | View repository information |
+| `gitee repo clone` | Clone a repository with authentication |
 | `gitee pr create` | Create a Pull Request (interactive or flags) |
 | `gitee pr list` | List PRs with state / author / label / branch filters |
 | `gitee pr view` | View Pull Request details |
@@ -194,6 +195,12 @@ gitee issue view IABCDE --comments
 # View repository info (current repo or owner/repo)
 gitee repo view
 gitee repo view owner/repo --json
+
+# Clone a repository using the saved token (origin is reset to a token-free URL afterwards)
+gitee repo clone owner/repo
+gitee repo clone owner/repo my-dir
+# Pass extra args through to git after --
+gitee repo clone owner/repo -- --depth 1 --branch dev
 
 # View CI/CD status for the current branch
 gitee ci status

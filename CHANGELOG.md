@@ -7,7 +7,12 @@
 
 ## [Unreleased]
 
-待发布的变更将在此处记录。
+### ✨ 新增功能
+- **`gitee repo clone <owner/repo> [dir]`** - 使用本地令牌克隆仓库
+  - 自动用保存的令牌构造鉴权 clone URL
+  - 仅指定仓库名时，owner 取当前登录用户
+  - 支持在 `--` 之后透传 `--depth`、`--branch` 等参数给底层 `git clone`
+  - 克隆完成后自动将 `origin` 重置为不含令牌的干净 URL，避免令牌泄露
 
 ---
 
