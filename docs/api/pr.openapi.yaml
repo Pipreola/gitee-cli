@@ -521,6 +521,97 @@ paths:
               example:
                 message: "PR 已关闭，无法合并"
 
+  /repos/{owner}/{repo}/pulls/{number}/review:
+    post:
+      summary: 审查 Pull Request（审查通过）
+      description: |
+        将指定编号的 Pull Request 标记为「审查通过」。CLI 命令 `gitee pr review <number> --approve` 使用此接口。
+
+        **重要**：Gitee v5 该接口按 formData 接收参数，
+        Content-Type 必须为 `application/x-www-form-urlencoded`，
+        `access_token` 与 `force` 均以 form 字段提交。
+
+        CLI 的 `--comment` 模式（仅发表审查评论）不调用此接口，而是复用
+        `POST /repos/{owner}/{repo}/pulls/{number}/comments`（见 createPullRequestComment）；
+        `--approve --body` 模式则在本接口成功后追加一次该评论接口调用。
+      operationId: reviewPullRequest
+      tags:
+        - Pull Request
+      security:
+        - access_token: []
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: 仓库所属空间地址（path）
+          schema:
+            type: string
+          example: "pipreola"
+        - name: repo
+          in: path
+          required: true
+          description: 仓库路径（path）
+          schema:
+            type: string
+          example: "gitee-cli"
+        - name: number
+          in: path
+          required: true
+          description: Pull Request 编号
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - access_token
+              properties:
+                access_token:
+                  type: string
+                  description: 用户授权码（Gitee v5 要求以 form 字段提交）
+                force:
+                  type: boolean
+                  description: |
+                    是否强制通过，忽略分支保护设置中的审查/测试规则限制。
+                    CLI 的 --force 映射到此字段；为 false 时不发送该字段，由服务端按分支保护规则默认处理。
+                  default: false
+                  example: false
+      responses:
+        '200':
+          description: 审查通过成功（无响应体）
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未授权
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 权限不足（无审查权限或分支保护限制）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "无权审查该 Pull Request"
+        '404':
+          description: 仓库或 PR 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /repos/{owner}/{repo}/pulls/{number}.diff:
     get:
       summary: 获取 Pull Request 的 unified diff

@@ -826,6 +826,117 @@ func TestMergePullRequestPathEscaping(t *testing.T) {
 	}
 }
 
+// TestReviewPullRequestFormDataContract 验证审查接口以 form-urlencoded 提交，
+// 且 access_token / force 字段命名与 HTTP 方法、路径严格符合 Gitee v5 contract。
+func TestReviewPullRequestFormDataContract(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("Method = %q, 期望 POST", r.Method)
+		}
+		if r.URL.Path != "/repos/owner/repo/pulls/123/review" {
+			t.Errorf("Path = %q, 期望 /repos/owner/repo/pulls/123/review", r.URL.Path)
+		}
+		ct := r.Header.Get("Content-Type")
+		if !strings.HasPrefix(ct, "application/x-www-form-urlencoded") {
+			t.Errorf("Content-Type = %q, 期望 application/x-www-form-urlencoded", ct)
+		}
+		// access_token 必须在 form body 中，不应残留在 query
+		if got := r.URL.Query().Get("access_token"); got != "" {
+			t.Errorf("query access_token = %q, 期望不在 query 中", got)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm 失败: %v", err)
+		}
+		if got := r.PostForm.Get("access_token"); got != "tok123" {
+			t.Errorf("form access_token = %q, 期望 tok123", got)
+		}
+		if got := r.PostForm.Get("force"); got != "true" {
+			t.Errorf("form force = %q, 期望 true", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok123")
+	if err := client.ReviewPullRequest(context.Background(), "owner", "repo", 123, &ReviewPullRequestInput{Force: true}); err != nil {
+		t.Fatalf("ReviewPullRequest 返回错误: %v", err)
+	}
+}
+
+// TestReviewPullRequestOmitsForceWhenFalse 验证 force 为 false 时不发送该字段，
+// 让服务端按分支保护规则默认处理。
+func TestReviewPullRequestOmitsForceWhenFalse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm 失败: %v", err)
+		}
+		if r.PostForm.Has("force") {
+			t.Errorf("force=false 时不应发送 force 字段，实际值: %q", r.PostForm.Get("force"))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	if err := client.ReviewPullRequest(context.Background(), "o", "r", 1, &ReviewPullRequestInput{Force: false}); err != nil {
+		t.Fatalf("ReviewPullRequest 返回错误: %v", err)
+	}
+}
+
+// TestReviewPullRequestValidation 验证 owner/repo/number 的本地校验。
+func TestReviewPullRequestValidation(t *testing.T) {
+	client := NewClient("https://example.com", "tok")
+	ctx := context.Background()
+	if err := client.ReviewPullRequest(ctx, "", "r", 1, &ReviewPullRequestInput{}); err == nil {
+		t.Error("期望 owner 为空时报错")
+	}
+	if err := client.ReviewPullRequest(ctx, "o", "", 1, &ReviewPullRequestInput{}); err == nil {
+		t.Error("期望 repo 为空时报错")
+	}
+	if err := client.ReviewPullRequest(ctx, "o", "r", 0, &ReviewPullRequestInput{}); err == nil {
+		t.Error("期望 number 为 0 时报错")
+	}
+}
+
+// TestReviewPullRequestErrorResponse 验证非 2xx 响应被转为带状态码与消息的 APIError。
+func TestReviewPullRequestErrorResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"无权审查该 Pull Request"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	err := client.ReviewPullRequest(context.Background(), "o", "r", 1, &ReviewPullRequestInput{})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("错误类型 = %T, 期望 *APIError", err)
+	}
+	if apiErr.StatusCode != http.StatusForbidden {
+		t.Errorf("StatusCode = %d, 期望 403", apiErr.StatusCode)
+	}
+	if !strings.Contains(apiErr.Message, "无权审查") {
+		t.Errorf("Message = %q, 期望包含 无权审查", apiErr.Message)
+	}
+}
+
+// TestReviewPullRequestPathEscaping 验证 owner/repo 中的特殊字符被正确转义。
+func TestReviewPullRequestPathEscaping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantEscaped := "/repos/my%2Forg/my%20repo/pulls/9/review"
+		if got := r.URL.EscapedPath(); got != wantEscaped {
+			t.Errorf("EscapedPath = %q, 期望 %q", got, wantEscaped)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	if err := client.ReviewPullRequest(context.Background(), "my/org", "my repo", 9, &ReviewPullRequestInput{}); err != nil {
+		t.Fatalf("ReviewPullRequest 返回错误: %v", err)
+	}
+}
+
 // TestCreatePullRequestCommentSuccess 验证创建 PR 评论的请求格式与响应解析。
 func TestCreatePullRequestCommentSuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
