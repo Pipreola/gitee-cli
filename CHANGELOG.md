@@ -8,14 +8,17 @@
 ## [Unreleased]
 
 ### ✨ 新增功能
+- **`gitee pr edit <number>`** - 编辑 Pull Request 的标题、正文、标签、审阅者或里程碑
+  - flags：`--title` / `--body` / `--labels` / `--assignees` / `--milestone`
+  - 仅修改显式指定的字段（PATCH 部分更新语义），传空字符串可清空标签/审阅者
+- **`gitee issue edit <number>`** - 编辑 Issue 的标题、正文、标签、指派人或里程碑
+  - flags：`--title` / `--body` / `--labels` / `--assignee` / `--milestone`
+  - 仅修改显式指定的字段（PATCH 部分更新语义），传空字符串可清空标签/指派人
 - **`gitee repo clone <owner/repo> [dir]`** - 使用本地令牌克隆仓库
   - 自动用保存的令牌构造鉴权 clone URL
   - 仅指定仓库名时，owner 取当前登录用户
   - 支持在 `--` 之后透传 `--depth`、`--branch` 等参数给底层 `git clone`
   - 克隆完成后自动将 `origin` 重置为不含令牌的干净 URL，避免令牌泄露
-
-### ✨ 新增
-
 - **`gitee pr review <number>`**（CRH-25）- 审查 Pull Request
   - `--approve` 调用 `POST /repos/{owner}/{repo}/pulls/{number}/review` 标记审查通过
   - `--comment` + `--body` / `--body-file` 仅发表审查评论

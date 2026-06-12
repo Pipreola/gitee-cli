@@ -368,6 +368,79 @@ func (c *Client) UpdatePullRequestState(ctx context.Context, owner, repo string,
 	return &pr, nil
 }
 
+// EditPullRequestInput 是编辑 Pull Request 的输入参数。
+//
+// 所有字段均为指针类型，遵循 PATCH 部分更新语义：
+//   - nil 表示该字段保持不变（不提交到请求体）；
+//   - 非 nil（即使指向空字符串/0）表示显式更新为该值。
+//
+// 这样调用方可区分「不修改」与「清空」两种意图。
+type EditPullRequestInput struct {
+	// Title 是 PR 标题。
+	Title *string
+	// Body 是 PR 描述内容。
+	Body *string
+	// Labels 是标签列表，逗号分隔的字符串。
+	Labels *string
+	// Assignees 是指派的审阅者，逗号分隔的用户名。
+	Assignees *string
+	// MilestoneNumber 是里程碑编号。
+	MilestoneNumber *int64
+}
+
+// isEmpty 判断是否没有任何待更新字段。
+func (in *EditPullRequestInput) isEmpty() bool {
+	if in == nil {
+		return true
+	}
+	return in.Title == nil && in.Body == nil && in.Labels == nil &&
+		in.Assignees == nil && in.MilestoneNumber == nil
+}
+
+// EditPullRequest 调用 PATCH /repos/:owner/:repo/pulls/:number 编辑 PR 的标题/正文/标签/指派人/里程碑。
+// 仅提交非 nil 字段，符合部分更新语义。
+func (c *Client) EditPullRequest(ctx context.Context, owner, repo string, number int64, input *EditPullRequestInput) (*PullRequest, error) {
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number <= 0 {
+		return nil, fmt.Errorf("PR 编号必须大于 0")
+	}
+	if input.isEmpty() {
+		return nil, fmt.Errorf("至少需要指定一个待修改字段")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", escapePathSegment(owner), escapePathSegment(repo), number)
+
+	payload := map[string]interface{}{}
+	if input.Title != nil {
+		payload["title"] = *input.Title
+	}
+	if input.Body != nil {
+		payload["body"] = *input.Body
+	}
+	if input.Labels != nil {
+		payload["labels"] = *input.Labels
+	}
+	if input.Assignees != nil {
+		payload["assignees"] = *input.Assignees
+	}
+	if input.MilestoneNumber != nil {
+		payload["milestone_number"] = *input.MilestoneNumber
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	var pr PullRequest
+	if err := c.doWithBody(ctx, http.MethodPatch, path, nil, strings.NewReader(string(body)), &pr); err != nil {
+		return nil, err
+	}
+	return &pr, nil
+}
+
 // Repository 表示 Gitee 仓库的信息（精简自 GET /repos/:owner/:repo）。
 type Repository struct {
 	ID              int64  `json:"id"`
@@ -710,6 +783,83 @@ func (c *Client) UpdateIssueState(ctx context.Context, owner, repo, number, stat
 	path := fmt.Sprintf("/repos/%s/%s/issues/%s", escapePathSegment(owner), escapePathSegment(repo), escapePathSegment(number))
 
 	body, err := json.Marshal(map[string]string{"state": state, "repo": repo})
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	var issue Issue
+	if err := c.doWithBody(ctx, http.MethodPatch, path, nil, strings.NewReader(string(body)), &issue); err != nil {
+		return nil, err
+	}
+	return &issue, nil
+}
+
+// EditIssueInput 是编辑 Issue 的输入参数。
+//
+// 所有字段均为指针类型，遵循 PATCH 部分更新语义：
+//   - nil 表示该字段保持不变（不提交到请求体）；
+//   - 非 nil（即使指向空字符串/0）表示显式更新为该值。
+//
+// 注意：Gitee v5 编辑 Issue 接口的指派人字段名为 assignee（单数），
+// 里程碑字段名为 milestone。
+type EditIssueInput struct {
+	// Title 是 Issue 标题。
+	Title *string
+	// Body 是 Issue 描述内容。
+	Body *string
+	// Labels 是标签列表，逗号分隔的字符串。
+	Labels *string
+	// Assignee 是指派人登录名（单个）。
+	Assignee *string
+	// MilestoneNumber 是里程碑编号。
+	MilestoneNumber *int64
+}
+
+// isEmpty 判断是否没有任何待更新字段。
+func (in *EditIssueInput) isEmpty() bool {
+	if in == nil {
+		return true
+	}
+	return in.Title == nil && in.Body == nil && in.Labels == nil &&
+		in.Assignee == nil && in.MilestoneNumber == nil
+}
+
+// EditIssue 调用 PATCH /repos/:owner/:repo/issues/:number 编辑 Issue 的标题/正文/标签/指派人/里程碑。
+// 仅提交非 nil 字段，符合部分更新语义。
+//
+// 注意：与 UpdateIssueState 保持一致，repo 同时出现在 path 与请求体的 repo 字段中，
+// 符合 Gitee v5 编辑 Issue 接口约定。
+func (c *Client) EditIssue(ctx context.Context, owner, repo, number string, input *EditIssueInput) (*Issue, error) {
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+	if number == "" {
+		return nil, fmt.Errorf("Issue 编号不能为空")
+	}
+	if input.isEmpty() {
+		return nil, fmt.Errorf("至少需要指定一个待修改字段")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/issues/%s", escapePathSegment(owner), escapePathSegment(repo), escapePathSegment(number))
+
+	payload := map[string]interface{}{"repo": repo}
+	if input.Title != nil {
+		payload["title"] = *input.Title
+	}
+	if input.Body != nil {
+		payload["body"] = *input.Body
+	}
+	if input.Labels != nil {
+		payload["labels"] = *input.Labels
+	}
+	if input.Assignee != nil {
+		payload["assignee"] = *input.Assignee
+	}
+	if input.MilestoneNumber != nil {
+		payload["milestone"] = *input.MilestoneNumber
+	}
+
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求体失败: %w", err)
 	}

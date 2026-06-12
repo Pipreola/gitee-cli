@@ -1333,3 +1333,210 @@ func TestUpdateIssueStateValidation(t *testing.T) {
 		t.Errorf("期望 state 校验错误，实际: %v", err)
 	}
 }
+
+// TestEditPullRequestPartialUpdate 验证 PATCH 仅提交显式指定的字段。
+func TestEditPullRequestPartialUpdate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("Method = %q, 期望 PATCH", r.Method)
+		}
+		if r.URL.Path != "/repos/owner/repo/pulls/123" {
+			t.Errorf("Path = %q, 期望 /repos/owner/repo/pulls/123", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("access_token"); got != "tok" {
+			t.Errorf("access_token = %q, 期望 tok", got)
+		}
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("解析请求体失败: %v", err)
+		}
+		// 仅 title 与 labels 被指定，其余字段不得出现
+		if got := payload["title"]; got != "新标题" {
+			t.Errorf("title = %v, 期望 新标题", got)
+		}
+		if got := payload["labels"]; got != "bug,urgent" {
+			t.Errorf("labels = %v, 期望 bug,urgent", got)
+		}
+		if _, ok := payload["body"]; ok {
+			t.Errorf("body 不应出现在请求体中: %v", payload["body"])
+		}
+		if _, ok := payload["assignees"]; ok {
+			t.Errorf("assignees 不应出现在请求体中: %v", payload["assignees"])
+		}
+		if _, ok := payload["milestone_number"]; ok {
+			t.Errorf("milestone_number 不应出现在请求体中: %v", payload["milestone_number"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"number":123,"title":"新标题","html_url":"https://gitee.com/owner/repo/pulls/123","state":"open"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	title := "新标题"
+	labels := "bug,urgent"
+	pr, err := client.EditPullRequest(context.Background(), "owner", "repo", 123, &EditPullRequestInput{
+		Title:  &title,
+		Labels: &labels,
+	})
+	if err != nil {
+		t.Fatalf("EditPullRequest 返回错误: %v", err)
+	}
+	if pr.Title != "新标题" {
+		t.Errorf("返回 Title = %q, 期望 新标题", pr.Title)
+	}
+}
+
+// TestEditPullRequestClearField 验证传空字符串可显式清空字段（区别于不修改）。
+func TestEditPullRequestClearField(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("解析请求体失败: %v", err)
+		}
+		// labels 显式设为空字符串，必须出现在请求体中
+		v, ok := payload["labels"]
+		if !ok {
+			t.Errorf("labels 应出现在请求体中（清空意图）")
+		}
+		if v != "" {
+			t.Errorf("labels = %v, 期望空字符串", v)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"number":123,"title":"t","html_url":"u","state":"open"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	empty := ""
+	_, err := client.EditPullRequest(context.Background(), "owner", "repo", 123, &EditPullRequestInput{
+		Labels: &empty,
+	})
+	if err != nil {
+		t.Fatalf("EditPullRequest 返回错误: %v", err)
+	}
+}
+
+// TestEditPullRequestValidation 验证参数校验。
+func TestEditPullRequestValidation(t *testing.T) {
+	client := NewClient("", "tok")
+	ctx := context.Background()
+	title := "t"
+
+	if _, err := client.EditPullRequest(ctx, "", "repo", 1, &EditPullRequestInput{Title: &title}); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 owner 校验错误，实际: %v", err)
+	}
+	if _, err := client.EditPullRequest(ctx, "owner", "repo", 0, &EditPullRequestInput{Title: &title}); err == nil ||
+		!strings.Contains(err.Error(), "PR 编号必须大于 0") {
+		t.Errorf("期望编号校验错误，实际: %v", err)
+	}
+	if _, err := client.EditPullRequest(ctx, "owner", "repo", 1, &EditPullRequestInput{}); err == nil ||
+		!strings.Contains(err.Error(), "至少需要指定一个待修改字段") {
+		t.Errorf("期望空字段校验错误，实际: %v", err)
+	}
+	if _, err := client.EditPullRequest(ctx, "owner", "repo", 1, nil); err == nil ||
+		!strings.Contains(err.Error(), "至少需要指定一个待修改字段") {
+		t.Errorf("期望 nil input 校验错误，实际: %v", err)
+	}
+}
+
+// TestEditPullRequestAPIError 验证 API 错误向上传播。
+func TestEditPullRequestAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"无权限"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	title := "t"
+	_, err := client.EditPullRequest(context.Background(), "owner", "repo", 1, &EditPullRequestInput{Title: &title})
+	if err == nil {
+		t.Fatal("期望错误但没有返回")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusForbidden {
+		t.Errorf("期望 403 APIError，实际: %v", err)
+	}
+}
+
+// TestEditIssuePartialUpdate 验证 Issue PATCH 仅提交显式字段，且字段名符合 Gitee 约定（assignee/milestone）。
+func TestEditIssuePartialUpdate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("Method = %q, 期望 PATCH", r.Method)
+		}
+		if r.URL.Path != "/repos/owner/repo/issues/I123" {
+			t.Errorf("Path = %q, 期望 /repos/owner/repo/issues/I123", r.URL.Path)
+		}
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("解析请求体失败: %v", err)
+		}
+		// repo 字段必须随体提交（与状态更新接口一致）
+		if got := payload["repo"]; got != "repo" {
+			t.Errorf("repo = %v, 期望 repo", got)
+		}
+		if got := payload["title"]; got != "改标题" {
+			t.Errorf("title = %v, 期望 改标题", got)
+		}
+		// 指派人字段名为 assignee（单数），不是 assignees
+		if got := payload["assignee"]; got != "user1" {
+			t.Errorf("assignee = %v, 期望 user1", got)
+		}
+		if _, ok := payload["assignees"]; ok {
+			t.Errorf("不应出现 assignees 字段（应使用 assignee）")
+		}
+		if got, ok := payload["milestone"]; !ok || got != float64(5) {
+			t.Errorf("milestone = %v, 期望 5", got)
+		}
+		if _, ok := payload["body"]; ok {
+			t.Errorf("body 不应出现在请求体中")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"number":"I123","title":"改标题","html_url":"https://gitee.com/owner/repo/issues/I123","state":"open"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "tok")
+	title := "改标题"
+	assignee := "user1"
+	var ms int64 = 5
+	issue, err := client.EditIssue(context.Background(), "owner", "repo", "I123", &EditIssueInput{
+		Title:           &title,
+		Assignee:        &assignee,
+		MilestoneNumber: &ms,
+	})
+	if err != nil {
+		t.Fatalf("EditIssue 返回错误: %v", err)
+	}
+	if issue.Number != "I123" || issue.Title != "改标题" {
+		t.Errorf("返回 Issue 不符: %+v", issue)
+	}
+}
+
+// TestEditIssueValidation 验证 Issue 编辑参数校验。
+func TestEditIssueValidation(t *testing.T) {
+	client := NewClient("", "tok")
+	ctx := context.Background()
+	title := "t"
+
+	if _, err := client.EditIssue(ctx, "owner", "", "I1", &EditIssueInput{Title: &title}); err == nil ||
+		!strings.Contains(err.Error(), "owner 和 repo 不能为空") {
+		t.Errorf("期望 repo 校验错误，实际: %v", err)
+	}
+	if _, err := client.EditIssue(ctx, "owner", "repo", "", &EditIssueInput{Title: &title}); err == nil ||
+		!strings.Contains(err.Error(), "Issue 编号不能为空") {
+		t.Errorf("期望编号校验错误，实际: %v", err)
+	}
+	if _, err := client.EditIssue(ctx, "owner", "repo", "I1", &EditIssueInput{}); err == nil ||
+		!strings.Contains(err.Error(), "至少需要指定一个待修改字段") {
+		t.Errorf("期望空字段校验错误，实际: %v", err)
+	}
+	if _, err := client.EditIssue(ctx, "owner", "repo", "I1", nil); err == nil ||
+		!strings.Contains(err.Error(), "至少需要指定一个待修改字段") {
+		t.Errorf("期望 nil input 校验错误，实际: %v", err)
+	}
+}
