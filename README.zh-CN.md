@@ -26,6 +26,7 @@
 | `gitee auth status` | 查看当前登录状态 |
 | `gitee auth logout` | 登出并清除本地凭证 |
 | `gitee repo view` | 查看仓库信息 |
+| `gitee repo clone` | 克隆仓库（含鉴权） |
 | `gitee pr create` | 创建 Pull Request（交互式或参数化） |
 | `gitee pr list` | 按状态/作者/标签/分支过滤列出 PR |
 | `gitee pr view` | 查看 Pull Request 详情 |
@@ -194,6 +195,12 @@ gitee issue view IABCDE --comments
 # 查看仓库信息（当前仓库或 owner/repo）
 gitee repo view
 gitee repo view owner/repo --json
+
+# 使用本地令牌克隆仓库（克隆后 origin 会重置为不含令牌的 URL）
+gitee repo clone owner/repo
+gitee repo clone owner/repo my-dir
+# 在 -- 之后透传额外参数给 git
+gitee repo clone owner/repo -- --depth 1 --branch dev
 
 # 查看当前分支的 CI/CD 状态
 gitee ci status
