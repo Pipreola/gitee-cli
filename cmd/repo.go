@@ -64,10 +64,13 @@ func newRepoCmd() *cobra.Command {
 	repoCmd := &cobra.Command{
 		Use:   "repo",
 		Short: "管理与查看仓库",
-		Long:  "查看 Gitee 仓库信息。",
+		Long:  "创建、Fork、克隆、列出与查看 Gitee 仓库。",
 	}
 	repoCmd.AddCommand(newRepoViewCmd())
 	repoCmd.AddCommand(newRepoCloneCmd())
+	repoCmd.AddCommand(newRepoCreateCmd())
+	repoCmd.AddCommand(newRepoForkCmd())
+	repoCmd.AddCommand(newRepoListCmd())
 	return repoCmd
 }
 

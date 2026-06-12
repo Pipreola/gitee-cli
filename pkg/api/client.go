@@ -406,6 +406,153 @@ func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Reposi
 	return &r, nil
 }
 
+// CreateRepositoryInput 是创建仓库的输入参数。
+// 对应 Gitee v5 的 POST /user/repos（个人仓库）与 POST /orgs/{org}/repos（组织仓库）。
+type CreateRepositoryInput struct {
+	// Name 是仓库名称（必填）。
+	Name string `json:"name"`
+	// Description 是仓库描述（可选）。
+	Description string `json:"description,omitempty"`
+	// Homepage 是仓库主页地址（可选）。
+	Homepage string `json:"homepage,omitempty"`
+	// Private 标记是否为私有仓库（可选，默认公开）。
+	Private bool `json:"private,omitempty"`
+	// AutoInit 标记是否自动初始化仓库（生成 README）（可选）。
+	AutoInit bool `json:"auto_init,omitempty"`
+}
+
+// CreateRepository 创建一个仓库。
+// org 为空时在当前认证用户名下创建（POST /user/repos）；
+// org 非空时在指定组织下创建（POST /orgs/{org}/repos）。
+func (c *Client) CreateRepository(ctx context.Context, org string, input *CreateRepositoryInput) (*Repository, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input 不能为空")
+	}
+	if input.Name == "" {
+		return nil, fmt.Errorf("仓库名称（name）是必填参数")
+	}
+
+	var path string
+	if org != "" {
+		path = fmt.Sprintf("/orgs/%s/repos", escapePathSegment(org))
+	} else {
+		path = "/user/repos"
+	}
+
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	var r Repository
+	if err := c.doWithBody(ctx, http.MethodPost, path, nil, strings.NewReader(string(body)), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// ForkRepositoryInput 是 fork 仓库的可选输入参数。
+type ForkRepositoryInput struct {
+	// Organization 是 fork 到的目标组织（可选）。为空时 fork 到当前认证用户名下。
+	Organization string `json:"organization,omitempty"`
+	// Name 是 fork 后的新仓库名称（可选）。为空时沿用源仓库名称。
+	Name string `json:"name,omitempty"`
+	// Path 是 fork 后的新仓库路径（可选）。
+	Path string `json:"path,omitempty"`
+}
+
+// ForkRepository 调用 POST /repos/:owner/:repo/forks fork 一个仓库。
+// input 可为 nil，表示 fork 到当前认证用户名下并沿用源仓库名称。
+func (c *Client) ForkRepository(ctx context.Context, owner, repo string, input *ForkRepositoryInput) (*Repository, error) {
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("owner 和 repo 不能为空")
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/forks", escapePathSegment(owner), escapePathSegment(repo))
+
+	var reader io.Reader
+	if input != nil {
+		body, err := json.Marshal(input)
+		if err != nil {
+			return nil, fmt.Errorf("序列化请求体失败: %w", err)
+		}
+		reader = strings.NewReader(string(body))
+	}
+
+	var r Repository
+	if err := c.doWithBody(ctx, http.MethodPost, path, nil, reader, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// ListRepositoriesInput 是查询仓库列表的输入参数。
+// 所有字段均为可选；空值由客户端跳过，让服务端使用默认值。
+//
+// 参考: GET /api/v5/user/repos 与 GET /api/v5/orgs/{org}/repos
+type ListRepositoriesInput struct {
+	// Visibility 是仓库可见性过滤：public / private / all（默认 all）。仅个人仓库接口支持。
+	Visibility string
+	// Affiliation 是用户与仓库的关系过滤：owner / collaborator / organization_member。仅个人仓库接口支持。
+	Affiliation string
+	// Type 是仓库类型过滤：all / owner / member 等。仅个人仓库接口支持。
+	Type string
+	// Sort 是排序字段：created（默认）/ updated / pushed / full_name。
+	Sort string
+	// Direction 是排序方向：asc / desc。
+	Direction string
+	// Page 是页码（从 1 开始，默认 1）。
+	Page int
+	// PerPage 是每页数量（1-100，默认 20）。
+	PerPage int
+}
+
+// ListRepositories 获取仓库列表。
+// org 为空时列出当前认证用户的仓库（GET /user/repos）；
+// org 非空时列出指定组织的仓库（GET /orgs/{org}/repos）。
+func (c *Client) ListRepositories(ctx context.Context, org string, input *ListRepositoriesInput) ([]Repository, error) {
+	query := url.Values{}
+	if input != nil {
+		// Visibility / Affiliation / Type 仅个人仓库接口有意义，组织接口会忽略。
+		if org == "" {
+			if input.Visibility != "" {
+				query.Set("visibility", input.Visibility)
+			}
+			if input.Affiliation != "" {
+				query.Set("affiliation", input.Affiliation)
+			}
+		}
+		if input.Type != "" {
+			query.Set("type", input.Type)
+		}
+		if input.Sort != "" {
+			query.Set("sort", input.Sort)
+		}
+		if input.Direction != "" {
+			query.Set("direction", input.Direction)
+		}
+		if input.Page > 0 {
+			query.Set("page", fmt.Sprintf("%d", input.Page))
+		}
+		if input.PerPage > 0 {
+			query.Set("per_page", fmt.Sprintf("%d", input.PerPage))
+		}
+	}
+
+	var path string
+	if org != "" {
+		path = fmt.Sprintf("/orgs/%s/repos", escapePathSegment(org))
+	} else {
+		path = "/user/repos"
+	}
+
+	var repos []Repository
+	if err := c.do(ctx, http.MethodGet, path, query, &repos); err != nil {
+		return nil, err
+	}
+	return repos, nil
+}
+
 // Comment 表示 Gitee 的评论（PR 评论与 Issue 评论结构一致）。
 type Comment struct {
 	ID        int64  `json:"id"`
